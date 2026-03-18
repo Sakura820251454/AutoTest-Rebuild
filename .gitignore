@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Test results and generated files
+6_result_dat_logs/
+5_result_dat/
+
+# Generated project files (build artifacts)
+3_generate_project/**/RAM_EABI/*.obj
+3_generate_project/**/RAM_EABI/*.lst
+3_generate_project/**/RAM_EABI/*.asm
+3_generate_project/**/RAM_EABI/*.d
+3_generate_project/**/RAM_EABI/*.out
+3_generate_project/**/RAM_EABI/*.map
+3_generate_project/**/RAM_EABI/*.xml
+3_generate_project/**/RAM_EABI/*.opt
+3_generate_project/**/RAM_ROMTABLES/*.obj
+3_generate_project/**/RAM_ROMTABLES/*.lst
+3_generate_project/**/RAM_ROMTABLES/*.asm
+3_generate_project/**/RAM_ROMTABLES/*.d
+3_generate_project/**/RAM_ROMTABLES/*.out
+3_generate_project/**/RAM_ROMTABLES/*.map
+3_generate_project/**/RAM_ROMTABLES/*.xml
+3_generate_project/**/RAM_ROMTABLES/*.opt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Trae
+.trae/documents/
+
+# Temporary files
+*.tmp
+*.temp
+undefined

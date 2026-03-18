@@ -1,0 +1,133 @@
+{
+  "_comment": "AutoTest 配置文件 - 详细说明请参考 README.md",
+  "paths": {
+    "_comment": "路径配置 - 支持绝对路径和相对路径（相对于配置文件所在目录）",
+    "template_dir": "D:\\AutoTest_rebuild\\1_project_templete\\ccs_insts_test",
+    "source_dir": "D:\\AutoTest_rebuild\\2_source_file",
+    "generate_dir": "D:\\AutoTest_rebuild\\3_generate_project",
+    "result_dir": "D:\\AutoTest_rebuild\\4_result_out",
+    "ccs_workspace": "D:\\AutoTest_rebuild\\3_generate_project"
+  },
+  "tools": {
+    "_comment": "工具路径配置",
+    "ccs_executable": "C:\\ti\\ccs1210\\ccs\\eclipse\\eclipsec.exe",
+    "ccs_dss": "C:\\ti\\ccs1210\\ccs\\ccs_base\\scripting\\bin\\dss.bat",
+    "ccxml": "C:\\Users\\AA\\ti\\CCSTargetConfigurations\\280039.ccxml"
+  },
+  "build": {
+    "_comment": "构建配置",
+    "build_config": "RAM_EABI",
+    "build_timeout": 600,
+    "max_build_threads": 4,
+    "do_generate": true,
+    "do_build": true
+  },
+  "generation": {
+    "_comment": "工程生成模式: template = 从模板生成, manual = 使用手动配置的工程",
+    "generation_mode": "manual"
+  },
+  "test": {
+    "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果，以下三个配置项已废弃但保留兼容",
+    "test_timeout": 4500,
+    "test_batch_size": 2,
+    "result_addr": "0x2",
+    "success_val": "0xCCCC",
+    "error_val": "0xEEEE",
+    "device": "Texas Instruments XDS100v3 USB Debug Probe_0",
+    "cpu": "C28xx_CPU1",
+    "do_test": true
+  },
+  "memory_segments": {
+    "_comment": "内存段配置 - 用于导出测试数据",
+    "segments": [
+      {
+        "name": "M0",
+        "addr": "0x0000",
+        "len": "0x200",
+        "width": 15
+      },
+      {
+        "name": "M1",
+        "addr": "0x0400",
+        "len": "0x200",
+        "width": 15
+      },
+      {
+        "name": "LS0",
+        "addr": "0x8000",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "LS1",
+        "addr": "0x8800",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "LS2",
+        "addr": "0x9000",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "LS3",
+        "addr": "0x9800",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "LS4",
+        "addr": "0xa000",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "LS5",
+        "addr": "0xa800",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "LS6",
+        "addr": "0xb000",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "LS7",
+        "addr": "0xb800",
+        "len": "0x400",
+        "width": 15
+      },
+      {
+        "name": "GS0",
+        "addr": "0xc000",
+        "len": "0x800",
+        "width": 15
+      },
+      {
+        "name": "GS1",
+        "addr": "0xd000",
+        "len": "0x800",
+        "width": 15
+      },
+      {
+        "name": "GS2",
+        "addr": "0xe000",
+        "len": "0x800",
+        "width": 15
+      },
+      {
+        "name": "GS3",
+        "addr": "0xf000",
+        "len": "0x800",
+        "width": 15
+      }
+    ]
+  },
+  "log": {
+    "_comment": "日志配置",
+    "log_retention_days": 30
+  }
+}
