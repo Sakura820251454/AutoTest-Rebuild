@@ -289,6 +289,37 @@ class ExecutePanel(QWidget):
             resume_test = True
             self.log_message.emit(f"启用断点续测，从第 {start_batch + 1} 批开始")
         
+        # 处理时间戳（必须在调用 _generate_test_config 之前）
+        # 如果不是断点续测，生成新的时间戳
+        # 如果是断点续测，保持原来的时间戳
+        if not resume_test:
+            from datetime import datetime
+            self.run_timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
+            self.log_message.emit(f"新的测试会话，时间戳: {self.run_timestamp}")
+        else:
+            # 断点续测时，如果时间戳丢失，尝试从已有结果目录恢复
+            if self.run_timestamp is None:
+                self.run_timestamp = self._recover_timestamp_from_results()
+                if self.run_timestamp:
+                    self.log_message.emit(f"断点续测，从结果目录恢复时间戳: {self.run_timestamp}")
+                else:
+                    from datetime import datetime
+                    self.run_timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
+                    self.log_message.emit(f"断点续测，无法恢复时间戳，使用新时间戳: {self.run_timestamp}")
+            else:
+                self.log_message.emit(f"断点续测，使用原时间戳: {self.run_timestamp}")
+        
+        # 在执行之前，从主窗口获取最新的配置
+        main_window = self.window()
+        if hasattr(main_window, 'config_panel') and hasattr(main_window, '_update_config_from_dict'):
+            # 从配置面板获取最新配置并更新
+            config_dict = main_window.config_panel.get_config_dict()
+            main_window._update_config_from_dict(config_dict)
+            # 更新执行面板的配置引用
+            self.config = main_window.config
+            # 重新生成测试配置文件（传递时间戳以保持一致）
+            main_window._generate_test_config(run_timestamp=self.run_timestamp)
+        
         # 重置状态（如果不是断点续测）
         if not resume_test:
             self.case_table.clear_cases()
@@ -303,15 +334,6 @@ class ExecutePanel(QWidget):
         # 重置硬件错误标志
         self.hardware_error_occurred = False
         self.failed_batch_number = 0
-        
-        # 如果不是断点续测，生成新的时间戳
-        # 如果是断点续测，保持原来的时间戳
-        if not resume_test:
-            from datetime import datetime
-            self.run_timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
-            self.log_message.emit(f"新的测试会话，时间戳: {self.run_timestamp}")
-        else:
-            self.log_message.emit(f"断点续测，使用原时间戳: {self.run_timestamp}")
         
         # 发送开始信号
         self.execution_started.emit()
@@ -481,6 +503,71 @@ class ExecutePanel(QWidget):
                 self.stats_label.setText("执行失败")
 
         self.execution_finished.emit(success)
+
+    def _recover_timestamp_from_results(self) -> Optional[str]:
+        """
+        从已有的结果目录恢复时间戳
+        
+        在断点续测时，如果时间戳丢失，尝试从以下位置恢复：
+        1. 已有的结果目录 (5_result_dat)
+        2. 已有的日志目录 (6_result_dat_logs)
+        3. full_regr.json 配置文件
+        
+        Returns:
+            恢复的时间戳字符串，如果无法恢复则返回 None
+        """
+        from pathlib import Path
+        
+        # 方法1: 从结果目录获取最新的时间戳
+        result_dir = Path("5_result_dat")
+        if result_dir.exists():
+            # 获取所有时间戳目录
+            timestamp_dirs = [d for d in result_dir.iterdir() if d.is_dir()]
+            if timestamp_dirs:
+                # 按修改时间排序，获取最新的
+                latest_dir = max(timestamp_dirs, key=lambda d: d.stat().st_mtime)
+                timestamp = latest_dir.name
+                # 验证是否是有效的时间戳格式 (YYYY-MM-DD-HH-MM)
+                import re
+                if re.match(r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}', timestamp):
+                    self.log_message.emit(f"从结果目录恢复时间戳: {timestamp}")
+                    return timestamp
+        
+        # 方法2: 从日志目录获取最新的时间戳
+        log_dir = Path("6_result_dat_logs")
+        if log_dir.exists():
+            timestamp_dirs = [d for d in log_dir.iterdir() if d.is_dir()]
+            if timestamp_dirs:
+                latest_dir = max(timestamp_dirs, key=lambda d: d.stat().st_mtime)
+                timestamp = latest_dir.name
+                import re
+                if re.match(r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}', timestamp):
+                    self.log_message.emit(f"从日志目录恢复时间戳: {timestamp}")
+                    return timestamp
+        
+        # 方法3: 从 full_regr.json 配置文件获取
+        config_file = Path("full_regr.json")
+        if config_file.exists():
+            try:
+                import json
+                with open(config_file, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                cases = config.get("cases", [])
+                if cases:
+                    # 从第一个用例的 dat_dir 提取时间戳
+                    dat_dir = cases[0].get("dat_dir", "")
+                    # dat_dir 格式: 5_result_dat/YYYY-MM-DD-HH-MM/case_name
+                    parts = Path(dat_dir).parts
+                    if len(parts) >= 2:
+                        timestamp = parts[1] if parts[0] == "5_result_dat" else parts[-2]
+                        import re
+                        if re.match(r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}', timestamp):
+                            self.log_message.emit(f"从配置文件恢复时间戳: {timestamp}")
+                            return timestamp
+            except Exception as e:
+                self.log_message.emit(f"从配置文件恢复时间戳失败: {e}")
+        
+        return None
 
     def refresh_cases(self):
         """刷新用例列表 - 从工程目录重新扫描"""

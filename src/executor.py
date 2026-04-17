@@ -227,6 +227,10 @@ class TestExecutor:
             if test_config_path is None:
                 test_config_path = self.generate_test_config()
             
+            # 将字符串路径转换为 Path 对象
+            if isinstance(test_config_path, str):
+                test_config_path = Path(test_config_path)
+            
             if test_config_path is None or not test_config_path.exists():
                 logger.error("没有测试配置文件，跳过测试执行")
                 return []
@@ -618,7 +622,7 @@ class TestExecutor:
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    timeout=10,  # 快速检测，10秒超时
+                    timeout=30,  # 增加超时时间到30秒
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
                 

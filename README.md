@@ -372,41 +372,6 @@ cat 6_result_dat_logs/2026-03-16-10-30/console_all.log
 
 ***
 
-## 兼容性说明
-
-### 配置文件兼容
-
-新版本支持两种配置格式：
-
-**新格式（推荐）：**
-
-```json
-{
-  "paths": { ... },
-  "tools": { ... },
-  "build": { ... },
-  "test": { ... }
-}
-```
-
-**旧格式（兼容）：**
-
-```json
-{
-  "template_dir": "...",
-  "source_dir": "...",
-  ...
-}
-```
-
-### 旧版脚本
-
-旧版脚本位于 `0_script/` 目录，仍然可以使用：
-
-```bash
-python 0_script/7_run_all.py -c config.json
-```
-
 ***
 
 ## 开发指南

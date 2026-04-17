@@ -16,7 +16,7 @@
   },
   "build": {
     "_comment": "构建配置",
-    "build_config": "RAM_EABI",
+    "build_config": "Debug",
     "build_timeout": 600,
     "max_build_threads": 4,
     "do_generate": true,
@@ -28,8 +28,8 @@
   },
   "test": {
     "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果，以下三个配置项已废弃但保留兼容",
-    "test_timeout": 4500,
-    "test_batch_size": 2,
+    "test_timeout": 45000,
+    "test_batch_size": 10,
     "result_addr": "0x2",
     "success_val": "0xCCCC",
     "error_val": "0xEEEE",
@@ -38,91 +38,12 @@
     "do_test": true
   },
   "memory_segments": {
-    "_comment": "内存段配置 - 用于导出测试数据",
     "segments": [
       {
-        "name": "M0",
-        "addr": "0x0000",
-        "len": "0x200",
-        "width": 15
-      },
-      {
-        "name": "M1",
-        "addr": "0x0400",
-        "len": "0x200",
-        "width": 15
-      },
-      {
-        "name": "LS0",
-        "addr": "0x8000",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "LS1",
-        "addr": "0x8800",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "LS2",
-        "addr": "0x9000",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "LS3",
-        "addr": "0x9800",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "LS4",
-        "addr": "0xa000",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "LS5",
-        "addr": "0xa800",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "LS6",
-        "addr": "0xb000",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "LS7",
-        "addr": "0xb800",
-        "len": "0x400",
-        "width": 15
-      },
-      {
-        "name": "GS0",
-        "addr": "0xc000",
-        "len": "0x800",
-        "width": 15
-      },
-      {
-        "name": "GS1",
-        "addr": "0xd000",
-        "len": "0x800",
-        "width": 15
-      },
-      {
-        "name": "GS2",
-        "addr": "0xe000",
-        "len": "0x800",
-        "width": 15
-      },
-      {
-        "name": "GS3",
-        "addr": "0xf000",
-        "len": "0x800",
-        "width": 15
+        "name": "MSUB32_task1",
+        "addr": "0xA810",
+        "len": "0x960",
+        "width": 8
       }
     ]
   },

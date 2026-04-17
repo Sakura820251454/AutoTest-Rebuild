@@ -101,35 +101,63 @@ importPackage(Packages.java.lang);
 
 print("正在连接目标设备...");
 
-// 创建调试会话
-var env = ScriptingEnvironment.instance();
-var server = env.getServer("DebugServer.1");
-server.setConfig("{ccxml_path}");
+var env = null;
+var server = null;
+var session = null;
 
-// 打开会话
-var session = server.openSession("{device_name}", "{cpu_name}");
-
-// 尝试连接
-print("尝试连接目标...");
 try {{
-    session.target.connect();
+    // 创建调试会话
+    env = ScriptingEnvironment.instance();
+    server = env.getServer("DebugServer.1");
+    
+    // 先尝试停止任何现有的调试会话（清理残留状态）
+    try {{
+        server.stop();
+        print("已停止现有调试会话");
+    }} catch (e) {{
+        // 忽略错误，可能没有现有会话
+    }}
+    
+    server.setConfig("{ccxml_path}");
+
+    // 打开会话
+    session = server.openSession("{device_name}", "{cpu_name}");
+
+    // 尝试连接
+    print("尝试连接目标...");
+    try {{
+        session.target.connect();
+    }} catch (e) {{
+        print("FAILED: 连接异常 - " + e.message);
+        server.stop();
+        java.lang.System.exit(1);
+    }}
+
+    // 检查连接状态
+    if (session.target.isConnected()) {{
+        print("SUCCESS: 硬件连接成功");
+        session.target.disconnect();
+    }} else {{
+        print("FAILED: 硬件连接失败");
+    }}
 }} catch (e) {{
-    print("FAILED: 连接异常 - " + e.message);
-    server.stop();
-    java.lang.System.exit(1);
+    print("FAILED: 脚本异常 - " + e.message);
+}} finally {{
+    // 确保资源被释放
+    if (session) {{
+        try {{
+            if (session.target.isConnected()) {{
+                session.target.disconnect();
+            }}
+        }} catch (e) {{}}
+    }}
+    if (server) {{
+        try {{
+            server.stop();
+        }} catch (e) {{}}
+    }}
+    print("检测完成");
 }}
-
-// 检查连接状态
-if (session.target.isConnected()) {{
-    print("SUCCESS: 硬件连接成功");
-    session.target.disconnect();
-}} else {{
-    print("FAILED: 硬件连接失败");
-}}
-
-// 关闭会话
-server.stop();
-print("检测完成");
 '''
         
         # 创建临时文件

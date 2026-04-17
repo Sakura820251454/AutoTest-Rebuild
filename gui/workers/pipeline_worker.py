@@ -11,6 +11,7 @@ import tempfile
 import json
 import os
 import time
+import logging
 from pathlib import Path
 from typing import Optional, List
 from enum import Enum
@@ -25,6 +26,22 @@ from src.generator import ProjectGenerator
 from src.builder import ProjectBuilder
 from src.executor import TestExecutor
 from src.logger import setup_logger, get_logger, get_log_dir
+
+
+class GUILogHandler(logging.Handler):
+    """自定义日志处理器，将日志发送到 GUI"""
+    
+    def __init__(self, log_signal):
+        super().__init__()
+        self.log_signal = log_signal
+    
+    def emit(self, record):
+        """发送日志记录到 GUI"""
+        try:
+            msg = self.format(record)
+            self.log_signal.emit(msg)
+        except Exception:
+            pass
 
 
 class PipelineWorker(QThread):
@@ -54,6 +71,11 @@ class PipelineWorker(QThread):
             # 初始化日志系统
             log_dir = setup_logger()
             logger = get_logger(__name__)
+
+            # 添加自定义日志处理器，将日志发送到 GUI
+            gui_handler = GUILogHandler(self.log_message)
+            gui_handler.setLevel(logging.INFO)
+            logging.getLogger().addHandler(gui_handler)
 
             logger.info("=" * 60)
             logger.info("AutoTest 流水线启动")
@@ -86,6 +108,8 @@ class PipelineWorker(QThread):
                     self.finished.emit(False)
 
             finally:
+                # 移除 GUI 日志处理器
+                logging.getLogger().removeHandler(gui_handler)
                 # 清理临时文件
                 try:
                     os.remove(config_path)
@@ -136,22 +160,30 @@ class PipelineWorker(QThread):
         generation_mode = self.config._raw.get("generation", {}).get("generation_mode", "template")
 
         return {
-            # 路径配置
-            "template_dir": str(self.config.paths.template_dir),
-            "source_dir": str(self.config.paths.source_dir),
-            "generate_dir": str(self.config.paths.generate_dir),
-            "result_dir": str(self.config.paths.result_dir),
-            "ccs_workspace": str(self.config.paths.ccs_workspace),
-            "ccs_executable": str(self.config.paths.ccs_executable),
-            "ccs_dss": str(self.config.paths.ccs_dss),
-            "ccxml": str(self.config.paths.ccxml),
+            # 路径配置（新格式）
+            "paths": {
+                "template_dir": str(self.config.paths.template_dir),
+                "source_dir": str(self.config.paths.source_dir),
+                "generate_dir": str(self.config.paths.generate_dir),
+                "result_dir": str(self.config.paths.result_dir),
+                "ccs_workspace": str(self.config.paths.ccs_workspace),
+            },
+
+            # 工具路径配置（新格式）
+            "tools": {
+                "ccs_executable": str(self.config.paths.ccs_executable),
+                "ccs_dss": str(self.config.paths.ccs_dss),
+                "ccxml": str(self.config.paths.ccxml),
+            },
 
             # 构建设置
-            "build_config": self.config.build.build_config,
-            "build_timeout": self.config.build.build_timeout,
-            "max_build_threads": self.config.build.max_build_threads,
-            "do_generate": self.config.build.do_generate,
-            "do_build": self.config.build.do_build,
+            "build": {
+                "build_config": self.config.build.build_config,
+                "build_timeout": self.config.build.build_timeout,
+                "max_build_threads": self.config.build.max_build_threads,
+                "do_generate": self.config.build.do_generate,
+                "do_build": self.config.build.do_build,
+            },
 
             # 工程生成模式
             "generation": {
@@ -159,14 +191,16 @@ class PipelineWorker(QThread):
             },
 
             # 测试设置
-            "timeout": self.config.test.test_timeout,
-            "test_batch_size": self.config.test.test_batch_size,
-            "result_addr": self.config.test.result_addr,
-            "success_val": self.config.test.success_val,
-            "error_val": self.config.test.error_val,
-            "device": self.config.test.device,
-            "cpu": self.config.test.cpu,
-            "do_test": self.config.test.do_test,
+            "test": {
+                "timeout": self.config.test.test_timeout,
+                "test_batch_size": self.config.test.test_batch_size,
+                "result_addr": self.config.test.result_addr,
+                "success_val": self.config.test.success_val,
+                "error_val": self.config.test.error_val,
+                "device": self.config.test.device,
+                "cpu": self.config.test.cpu,
+                "do_test": self.config.test.do_test,
+            },
 
             # 内存段配置
             "memory_segments": {
@@ -184,7 +218,7 @@ class PipelineWorker(QThread):
                     "dat_dir": case.dat_dir if case.dat_dir else f"5_result_dat/{case.name}",
                     "segments": [
                         {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
-                        for s in case.segments
+                        for s in (case.segments if case.segments else self.config.memory_segments)
                     ]
                 }
                 for case in self.config.cases
@@ -367,9 +401,27 @@ class PipelineWorker(QThread):
             executor.on_case_finished = on_case_finished
             executor.on_hardware_error = on_hardware_error
 
-            # 如果配置中没有用例，从工作空间获取用例列表并发送给GUI
-            if not config.cases:
-                self.log_message.emit("从工作空间获取用例列表...")
+            # 优先使用已存在的 full_regr.json，避免覆盖用户修改的配置
+            test_config_path = None
+            existing_config = Path("full_regr.json")
+            
+            if existing_config.exists():
+                test_config_path = str(existing_config)
+                self.log_message.emit(f"使用现有测试配置: {test_config_path}")
+                # 如果配置中没有用例，从测试配置文件中获取用例列表
+                if not config.cases:
+                    import json
+                    with open(test_config_path, "r", encoding="utf-8") as f:
+                        test_config = json.load(f)
+                    case_names = [case["name"] for case in test_config.get("cases", [])]
+                    self._test_total_cases = len(case_names)
+                    if case_names:
+                        self.log_message.emit(f"发现 {len(case_names)} 个用例")
+                        self.case_list_loaded.emit(case_names)
+            else:
+                # 如果不存在 full_regr.json，则生成新的
+                if not config.cases:
+                    self.log_message.emit("从工作空间获取用例列表...")
                 test_config_path = executor.generate_test_config()
                 if test_config_path and Path(test_config_path).exists():
                     import json
@@ -380,11 +432,13 @@ class PipelineWorker(QThread):
                     if case_names:
                         self.log_message.emit(f"发现 {len(case_names)} 个用例")
                         self.case_list_loaded.emit(case_names)
-            else:
+            
+            if self._test_total_cases == 0 and config.cases:
                 self._test_total_cases = len(config.cases)
 
             # 支持断点续测
             results = executor.run_all(
+                test_config_path=test_config_path,
                 start_batch=self.start_batch,
                 resume_from_last=self.resume_test
             )

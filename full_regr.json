@@ -2,554 +2,1022 @@
   "ccxml": "C:/Users/AA/ti/CCSTargetConfigurations/280039.ccxml",
   "device": "Texas Instruments XDS100v3 USB Debug Probe_0",
   "cpu": "C28xx_CPU1",
-  "timeout": 4500,
+  "timeout": 45000,
   "result_addr": "0x2",
   "success_val": "0xCCCC",
   "error_val": "0xEEEE",
   "cases": [
     {
-      "name": "FASTRTS_atan_f32",
-      "out": "D:/AutoTest_rebuild/3_generate_project/FASTRTS_atan_f32/RAM_EABI/FASTRTS_atan_f32.out",
-      "dat_dir": "5_result_dat/2026-03-18-10-05/FASTRTS_atan_f32",
+      "name": "MCMP32_task1_batch_1",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_1/Debug/MCMP32_task1_batch_1.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_1",
       "segments": [
         {
-          "name": "M0",
-          "addr": "0x0000",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "M1",
-          "addr": "0x0400",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "LS0",
-          "addr": "0x8000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS1",
-          "addr": "0x8800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS2",
-          "addr": "0x9000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS3",
-          "addr": "0x9800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS4",
-          "addr": "0xa000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS5",
-          "addr": "0xa800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS6",
-          "addr": "0xb000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS7",
-          "addr": "0xb800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "GS0",
-          "addr": "0xc000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS1",
-          "addr": "0xd000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS2",
-          "addr": "0xe000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS3",
-          "addr": "0xf000",
-          "len": "0x800",
-          "width": 15
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
         }
       ]
     },
     {
-      "name": "FASTRTS_atan_f32_o0",
-      "out": "D:/AutoTest_rebuild/3_generate_project/FASTRTS_atan_f32_o0/RAM_EABI/FASTRTS_atan_f32_o0.out",
-      "dat_dir": "5_result_dat/2026-03-18-10-05/FASTRTS_atan_f32_o0",
+      "name": "MCMP32_task1_batch_10",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_10/Debug/MCMP32_task1_batch_10.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_10",
       "segments": [
         {
-          "name": "M0",
-          "addr": "0x0000",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "M1",
-          "addr": "0x0400",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "LS0",
-          "addr": "0x8000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS1",
-          "addr": "0x8800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS2",
-          "addr": "0x9000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS3",
-          "addr": "0x9800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS4",
-          "addr": "0xa000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS5",
-          "addr": "0xa800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS6",
-          "addr": "0xb000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS7",
-          "addr": "0xb800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "GS0",
-          "addr": "0xc000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS1",
-          "addr": "0xd000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS2",
-          "addr": "0xe000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS3",
-          "addr": "0xf000",
-          "len": "0x800",
-          "width": 15
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
         }
       ]
     },
     {
-      "name": "FASTRTS_atan_f32_o1",
-      "out": "D:/AutoTest_rebuild/3_generate_project/FASTRTS_atan_f32_o1/RAM_EABI/FASTRTS_atan_f32_o1.out",
-      "dat_dir": "5_result_dat/2026-03-18-10-05/FASTRTS_atan_f32_o1",
+      "name": "MCMP32_task1_batch_11",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_11/Debug/MCMP32_task1_batch_11.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_11",
       "segments": [
         {
-          "name": "M0",
-          "addr": "0x0000",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "M1",
-          "addr": "0x0400",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "LS0",
-          "addr": "0x8000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS1",
-          "addr": "0x8800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS2",
-          "addr": "0x9000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS3",
-          "addr": "0x9800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS4",
-          "addr": "0xa000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS5",
-          "addr": "0xa800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS6",
-          "addr": "0xb000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS7",
-          "addr": "0xb800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "GS0",
-          "addr": "0xc000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS1",
-          "addr": "0xd000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS2",
-          "addr": "0xe000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS3",
-          "addr": "0xf000",
-          "len": "0x800",
-          "width": 15
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
         }
       ]
     },
     {
-      "name": "FASTRTS_atan_f32_o2",
-      "out": "D:/AutoTest_rebuild/3_generate_project/FASTRTS_atan_f32_o2/RAM_EABI/FASTRTS_atan_f32_o2.out",
-      "dat_dir": "5_result_dat/2026-03-18-10-05/FASTRTS_atan_f32_o2",
+      "name": "MCMP32_task1_batch_12",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_12/Debug/MCMP32_task1_batch_12.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_12",
       "segments": [
         {
-          "name": "M0",
-          "addr": "0x0000",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "M1",
-          "addr": "0x0400",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "LS0",
-          "addr": "0x8000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS1",
-          "addr": "0x8800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS2",
-          "addr": "0x9000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS3",
-          "addr": "0x9800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS4",
-          "addr": "0xa000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS5",
-          "addr": "0xa800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS6",
-          "addr": "0xb000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS7",
-          "addr": "0xb800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "GS0",
-          "addr": "0xc000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS1",
-          "addr": "0xd000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS2",
-          "addr": "0xe000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS3",
-          "addr": "0xf000",
-          "len": "0x800",
-          "width": 15
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
         }
       ]
     },
     {
-      "name": "FASTRTS_atan_f32_o3",
-      "out": "D:/AutoTest_rebuild/3_generate_project/FASTRTS_atan_f32_o3/RAM_EABI/FASTRTS_atan_f32_o3.out",
-      "dat_dir": "5_result_dat/2026-03-18-10-05/FASTRTS_atan_f32_o3",
+      "name": "MCMP32_task1_batch_13",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_13/Debug/MCMP32_task1_batch_13.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_13",
       "segments": [
         {
-          "name": "M0",
-          "addr": "0x0000",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "M1",
-          "addr": "0x0400",
-          "len": "0x200",
-          "width": 15
-        },
-        {
-          "name": "LS0",
-          "addr": "0x8000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS1",
-          "addr": "0x8800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS2",
-          "addr": "0x9000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS3",
-          "addr": "0x9800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS4",
-          "addr": "0xa000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS5",
-          "addr": "0xa800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS6",
-          "addr": "0xb000",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "LS7",
-          "addr": "0xb800",
-          "len": "0x400",
-          "width": 15
-        },
-        {
-          "name": "GS0",
-          "addr": "0xc000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS1",
-          "addr": "0xd000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS2",
-          "addr": "0xe000",
-          "len": "0x800",
-          "width": 15
-        },
-        {
-          "name": "GS3",
-          "addr": "0xf000",
-          "len": "0x800",
-          "width": 15
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
         }
       ]
     },
     {
-      "name": "FASTRTS_atan_f32_o4",
-      "out": "D:/AutoTest_rebuild/3_generate_project/FASTRTS_atan_f32_o4/RAM_EABI/FASTRTS_atan_f32_o4.out",
-      "dat_dir": "5_result_dat/2026-03-18-10-05/FASTRTS_atan_f32_o4",
+      "name": "MCMP32_task1_batch_14",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_14/Debug/MCMP32_task1_batch_14.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_14",
       "segments": [
         {
-          "name": "M0",
-          "addr": "0x0000",
-          "len": "0x200",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_15",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_15/Debug/MCMP32_task1_batch_15.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_15",
+      "segments": [
         {
-          "name": "M1",
-          "addr": "0x0400",
-          "len": "0x200",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_16",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_16/Debug/MCMP32_task1_batch_16.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_16",
+      "segments": [
         {
-          "name": "LS0",
-          "addr": "0x8000",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_17",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_17/Debug/MCMP32_task1_batch_17.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_17",
+      "segments": [
         {
-          "name": "LS1",
-          "addr": "0x8800",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_18",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_18/Debug/MCMP32_task1_batch_18.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_18",
+      "segments": [
         {
-          "name": "LS2",
-          "addr": "0x9000",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_19",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_19/Debug/MCMP32_task1_batch_19.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_19",
+      "segments": [
         {
-          "name": "LS3",
-          "addr": "0x9800",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_2",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_2/Debug/MCMP32_task1_batch_2.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_2",
+      "segments": [
         {
-          "name": "LS4",
-          "addr": "0xa000",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_20",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_20/Debug/MCMP32_task1_batch_20.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_20",
+      "segments": [
         {
-          "name": "LS5",
-          "addr": "0xa800",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_21",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_21/Debug/MCMP32_task1_batch_21.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_21",
+      "segments": [
         {
-          "name": "LS6",
-          "addr": "0xb000",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_22",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_22/Debug/MCMP32_task1_batch_22.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_22",
+      "segments": [
         {
-          "name": "LS7",
-          "addr": "0xb800",
-          "len": "0x400",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_23",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_23/Debug/MCMP32_task1_batch_23.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_23",
+      "segments": [
         {
-          "name": "GS0",
-          "addr": "0xc000",
-          "len": "0x800",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_24",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_24/Debug/MCMP32_task1_batch_24.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_24",
+      "segments": [
         {
-          "name": "GS1",
-          "addr": "0xd000",
-          "len": "0x800",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_25",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_25/Debug/MCMP32_task1_batch_25.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_25",
+      "segments": [
         {
-          "name": "GS2",
-          "addr": "0xe000",
-          "len": "0x800",
-          "width": 15
-        },
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_26",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_26/Debug/MCMP32_task1_batch_26.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_26",
+      "segments": [
         {
-          "name": "GS3",
-          "addr": "0xf000",
-          "len": "0x800",
-          "width": 15
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_27",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_27/Debug/MCMP32_task1_batch_27.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_27",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_28",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_28/Debug/MCMP32_task1_batch_28.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_28",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_29",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_29/Debug/MCMP32_task1_batch_29.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_29",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_3",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_3/Debug/MCMP32_task1_batch_3.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_3",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_30",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_30/Debug/MCMP32_task1_batch_30.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_30",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_31",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_31/Debug/MCMP32_task1_batch_31.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_31",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_32",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_32/Debug/MCMP32_task1_batch_32.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_32",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_33",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_33/Debug/MCMP32_task1_batch_33.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_33",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_34",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_34/Debug/MCMP32_task1_batch_34.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_34",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_35",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_35/Debug/MCMP32_task1_batch_35.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_35",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_36",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_36/Debug/MCMP32_task1_batch_36.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_36",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_37",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_37/Debug/MCMP32_task1_batch_37.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_37",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_38",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_38/Debug/MCMP32_task1_batch_38.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_38",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_39",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_39/Debug/MCMP32_task1_batch_39.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_39",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_4",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_4/Debug/MCMP32_task1_batch_4.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_4",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_40",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_40/Debug/MCMP32_task1_batch_40.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_40",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_41",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_41/Debug/MCMP32_task1_batch_41.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_41",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_42",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_42/Debug/MCMP32_task1_batch_42.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_42",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_43",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_43/Debug/MCMP32_task1_batch_43.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_43",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_44",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_44/Debug/MCMP32_task1_batch_44.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_44",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_45",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_45/Debug/MCMP32_task1_batch_45.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_45",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_46",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_46/Debug/MCMP32_task1_batch_46.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_46",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_47",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_47/Debug/MCMP32_task1_batch_47.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_47",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_48",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_48/Debug/MCMP32_task1_batch_48.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_48",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_49",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_49/Debug/MCMP32_task1_batch_49.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_49",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_5",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_5/Debug/MCMP32_task1_batch_5.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_5",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_50",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_50/Debug/MCMP32_task1_batch_50.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_50",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_51",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_51/Debug/MCMP32_task1_batch_51.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_51",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_52",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_52/Debug/MCMP32_task1_batch_52.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_52",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_53",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_53/Debug/MCMP32_task1_batch_53.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_53",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_54",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_54/Debug/MCMP32_task1_batch_54.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_54",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_55",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_55/Debug/MCMP32_task1_batch_55.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_55",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_56",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_56/Debug/MCMP32_task1_batch_56.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_56",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_57",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_57/Debug/MCMP32_task1_batch_57.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_57",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_58",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_58/Debug/MCMP32_task1_batch_58.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_58",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_59",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_59/Debug/MCMP32_task1_batch_59.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_59",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_6",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_6/Debug/MCMP32_task1_batch_6.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_6",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_60",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_60/Debug/MCMP32_task1_batch_60.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_60",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_61",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_61/Debug/MCMP32_task1_batch_61.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_61",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_62",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_62/Debug/MCMP32_task1_batch_62.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_62",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_63",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_63/Debug/MCMP32_task1_batch_63.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_63",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_64",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_64/Debug/MCMP32_task1_batch_64.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_64",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_65",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_65/Debug/MCMP32_task1_batch_65.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_65",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_66",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_66/Debug/MCMP32_task1_batch_66.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_66",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_67",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_67/Debug/MCMP32_task1_batch_67.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_67",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_68",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_68/Debug/MCMP32_task1_batch_68.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_68",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_69",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_69/Debug/MCMP32_task1_batch_69.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_69",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_7",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_7/Debug/MCMP32_task1_batch_7.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_7",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_70",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_70/Debug/MCMP32_task1_batch_70.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_70",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_71",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_71/Debug/MCMP32_task1_batch_71.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_71",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_72",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_72/Debug/MCMP32_task1_batch_72.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_72",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_73",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_73/Debug/MCMP32_task1_batch_73.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_73",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_74",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_74/Debug/MCMP32_task1_batch_74.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_74",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_75",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_75/Debug/MCMP32_task1_batch_75.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_75",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_76",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_76/Debug/MCMP32_task1_batch_76.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_76",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_77",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_77/Debug/MCMP32_task1_batch_77.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_77",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_78",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_78/Debug/MCMP32_task1_batch_78.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_78",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_8",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_8/Debug/MCMP32_task1_batch_8.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_8",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
+        }
+      ]
+    },
+    {
+      "name": "MCMP32_task1_batch_9",
+      "out": "D:/AutoTest_rebuild/3_generate_project/MCMP32_task1_batch_9/Debug/MCMP32_task1_batch_9.out",
+      "dat_dir": "5_result_dat/2026-04-17-17-15/MCMP32_task1_batch_9",
+      "segments": [
+        {
+          "name": "MSUB32_task1",
+          "addr": "0xA810",
+          "len": "0x960",
+          "width": 8
         }
       ]
     }

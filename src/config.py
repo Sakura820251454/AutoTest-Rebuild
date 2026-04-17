@@ -208,7 +208,7 @@ class Config:
         """解析配置"""
         raw = config_dict if config_dict is not None else self._raw
         
-        is_new_format = "paths" in raw or "tools" in raw or "build" in raw or "test" in raw
+        is_new_format = "paths" in raw or "tools" in raw or "build" in raw or "test" in raw or "memory_segments" in raw
         
         if is_new_format:
             self.paths = self._parse_paths_new(raw)

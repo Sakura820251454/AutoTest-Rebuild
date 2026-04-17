@@ -240,9 +240,9 @@ generate_dir/
 **目的**: 将所有测试工程编译成可执行的 .out 文件
 
 **执行文件**:
-- **新版**: `src/builder.py` - `ProjectBuilder` 类
-- **旧版**: `0_script/3_import_build.py`
-- **入口**: `run.py --build`
+- **核心模块**: `src/builder.py` - `ProjectBuilder` 类
+- **CLI入口**: `run.py --build`
+- **GUI入口**: 执行面板 → 开始执行（选择"从构建开始"）
 
 **输入**:
 | 输入项 | 路径/文件 | 说明 |
@@ -302,8 +302,7 @@ result_dir/                      # 例如: D:/AutoTest_rebuild/4_result_out
 **目的**: 扫描所有 .out 文件，生成完整的测试配置
 
 **执行文件**:
-- **新版**: `src/executor.py` - `TestExecutor.generate_test_config()`
-- **旧版**: `0_script/5_generate_json_from_workspace.py`
+- **核心模块**: `src/executor.py` - `TestExecutor.generate_test_config()`
 - **调用时机**: 测试执行前自动调用
 
 **输入**:
@@ -376,10 +375,10 @@ full_regr.json                   # 完整测试配置
 **目的**: 将程序下载到目标板运行，导出内存数据，检查测试结果
 
 **执行文件**:
-- **新版**: `src/executor.py` - `TestExecutor` 类
-- **旧版**: `0_script/6_download_and_run_export_data.py`
+- **核心模块**: `src/executor.py` - `TestExecutor` 类
 - **DSS模板**: `templates/dss_test.js.tmpl`
-- **入口**: `run.py --test`
+- **CLI入口**: `run.py --test`
+- **GUI入口**: 执行面板 → 开始执行（选择"仅测试"）
 
 **输入**:
 | 输入项 | 路径/文件 | 说明 |
@@ -530,16 +529,6 @@ d:\AutoTest_rebuild/
 | `run_gui.py` | 启动 GUI | `python run_gui.py` |
 | `run_gui.py -c` | 启动并加载配置 | `python run_gui.py -c config.json` |
 | `run_gui.py --install-deps` | 自动安装依赖 | `python run_gui.py --install-deps` |
-
-### 旧版入口（保留兼容）
-
-| 脚本 | 功能 | 用法 |
-|------|------|------|
-| `0_script/7_run_all.py` | 一键执行 | `python 0_script/7_run_all.py -c config.json` |
-| `0_script/2_generate.py` | 生成工程 | `python 0_script/2_generate.py -c config.json` |
-| `0_script/3_import_build.py` | 导入构建 | `python 0_script/3_import_build.py -c config.json` |
-| `0_script/5_generate_json_from_workspace.py` | 生成配置 | `python 0_script/5_generate_json_from_workspace.py -c config.json -o full_regr.json` |
-| `0_script/6_download_and_run_export_data.py` | 执行测试 | `python 0_script/6_download_and_run_export_data.py -c full_regr.json` |
 
 ---
 

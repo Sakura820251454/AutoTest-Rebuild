@@ -212,6 +212,9 @@ class MainWindow(QMainWindow):
             # 更新执行面板
             self.execute_panel.set_config(self.config)
             
+            # 生成测试配置文件 full_regr.json
+            self._generate_test_config()
+            
             # 发送信号
             self.config_loaded.emit(self.config)
             
@@ -226,6 +229,26 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"加载配置文件失败:\n{str(e)}")
             return False
+    
+    def _generate_test_config(self, run_timestamp: Optional[str] = None):
+        """
+        生成测试配置文件 full_regr.json
+        
+        Args:
+            run_timestamp: 时间戳，用于断点续测时保持时间戳一致
+        """
+        try:
+            from src.executor import TestExecutor
+            
+            executor = TestExecutor(self.config, run_timestamp=run_timestamp)
+            test_config_path = executor.generate_test_config()
+            
+            if test_config_path and Path(test_config_path).exists():
+                self.set_status(f"测试配置已生成: {test_config_path}")
+        except Exception as e:
+            # 生成测试配置失败不影响主流程，只记录日志
+            import traceback
+            traceback.print_exc()
     
     def save_config(self, path: Optional[str] = None) -> bool:
         """
@@ -256,6 +279,9 @@ class MainWindow(QMainWindow):
             # 保存（使用新的保存方法，保留格式和注释）
             self.config.save(save_path)
             self.config_path = save_path
+            
+            # 保存配置后重新生成测试配置文件
+            self._generate_test_config()
             
             self.set_status(f"配置已保存: {save_path}")
             return True
@@ -310,6 +336,27 @@ class MainWindow(QMainWindow):
             self.config.test.device = config_dict["device"]
         if config_dict.get("cpu"):
             self.config.test.cpu = config_dict["cpu"]
+        
+        # 更新内存段配置
+        if config_dict.get("memory_segments"):
+            # 更新到 _raw 中，以便保存时能正确写入
+            self.config._raw["memory_segments"] = config_dict["memory_segments"]
+            
+            # 同时更新内存段列表
+            from src.config import MemorySegment
+            self.config.memory_segments = []
+            for segment_data in config_dict["memory_segments"].get("segments", []):
+                segment = MemorySegment(
+                    name=segment_data["name"],
+                    addr=segment_data["addr"],
+                    len=segment_data["len"],
+                    width=segment_data["width"]
+                )
+                self.config.memory_segments.append(segment)
+            
+            # 同时更新每个测试用例的 segments 配置
+            for case in self.config.cases:
+                case.segments = list(self.config.memory_segments)
     
     def detect_current_stage(self) -> Tuple[str, str]:
         """
