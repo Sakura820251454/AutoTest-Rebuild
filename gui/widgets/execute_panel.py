@@ -359,7 +359,7 @@ class ExecutePanel(QWidget):
         """停止执行"""
         if self.worker and self.worker.isRunning():
             self.worker.stop()
-            self.log_message.emit("正在停止执行...")
+            self.stop_btn.setEnabled(False)
     
     def on_progress_updated(self, percent: int, message: str):
         """

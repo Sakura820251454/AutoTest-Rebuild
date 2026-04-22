@@ -64,6 +64,7 @@ class PipelineWorker(QThread):
         self.resume_test = resume_test
         self.run_timestamp = run_timestamp  # 用于断点续测保持时间戳一致
         self.is_running = True
+        self._executor: Optional[TestExecutor] = None  # 测试执行器引用
 
     def run(self):
         """执行流水线"""
@@ -285,6 +286,10 @@ class PipelineWorker(QThread):
         """
         try:
             self.log_message.emit("开始生成工程...")
+            
+            # 检查是否请求停止
+            if not self.is_running:
+                return False
 
             # 调用真实的生成器
             generator = ProjectGenerator(config)
@@ -320,6 +325,10 @@ class PipelineWorker(QThread):
         """
         try:
             self.log_message.emit("开始构建工程...")
+            
+            # 检查是否请求停止
+            if not self.is_running:
+                return False
 
             # 调用真实的构建器
             builder = ProjectBuilder(config)
@@ -364,6 +373,13 @@ class PipelineWorker(QThread):
             # 调用真实的测试执行器
             # 如果是断点续测，使用原来的时间戳保持结果文件一致
             executor = TestExecutor(config, run_timestamp=self.run_timestamp)
+            self._executor = executor  # 保存引用以便停止
+            
+            # 设置停止检查回调
+            def should_stop():
+                return not self.is_running
+            
+            executor.should_stop = should_stop
             
             # 设置回调函数用于实时更新GUI
             def on_case_started(name):
@@ -484,4 +500,6 @@ class PipelineWorker(QThread):
     def stop(self):
         """停止执行"""
         self.is_running = False
+        if self._executor:
+            self._executor.stop()
         self.log_message.emit("正在停止执行...")

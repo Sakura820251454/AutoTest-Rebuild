@@ -93,7 +93,7 @@ IER_set .macro IFRdata
 ;-------------------------------CPU 程序段---------------------------;
 	MOV SP, #0X1434
 	ZAPA
-	MOVL XAR0, #0X9000
+	MOVL XAR0, #0XB000
 	MOVL *XAR0++, ACC			;;初始化CLA运行结果地址
 	CLA_reset					;;CLA关键寄存器初始化
 	CLA_BGRNDSet #0X8000		;;后台任务设置

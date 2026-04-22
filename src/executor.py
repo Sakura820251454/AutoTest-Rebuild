@@ -73,6 +73,11 @@ class TestExecutor:
         self.on_case_started: Optional[callable] = None
         self.on_case_finished: Optional[callable] = None
         self.on_hardware_error: Optional[callable] = None  # 硬件连接错误回调
+        self.should_stop: Optional[callable] = None  # 停止检查回调
+        
+        # 停止标志
+        self._stop_requested = False
+        self._current_process: Optional[subprocess.Popen] = None
     
     def validate(self):
         """验证测试环境"""
@@ -84,6 +89,21 @@ class TestExecutor:
                 error_code=4007,
                 details={"template_path": str(self.template_path)}
             )
+    
+    def stop(self):
+        """停止执行"""
+        self._stop_requested = True
+        if self._current_process:
+            try:
+                self._current_process.terminate()
+                self._current_process.wait(timeout=5)
+            except:
+                try:
+                    self._current_process.kill()
+                except:
+                    pass
+            self._current_process = None
+        logger.info("测试执行已请求停止")
     
     def generate_test_config(self, output_path: Optional[Path] = None) -> Path:
         """
@@ -277,6 +297,12 @@ class TestExecutor:
             
             with open(console_log, "a", encoding="utf-8") as f_out:
                 for i, batch in enumerate(batches, start_batch + 1):
+                    # 检查是否请求停止
+                    if self._stop_requested or (self.should_stop and self.should_stop()):
+                        logger.info("检测到停止请求，终止测试执行")
+                        self._mark_remaining_batches_as_skipped(batches[batches.index(batch):])
+                        break
+                    
                     logger.info(f"执行第 {i}/{start_batch + len(batches)} 批 ({len(batch)} 个用例)")
                     
                     # 通知批次中的用例开始，并记录开始时间
@@ -794,25 +820,30 @@ print("检测完成");
         try:
             cmd = [str(self.dss_exe), js_file]
             logger.info(f"执行 DSS 命令: {' '.join(cmd)}")
-            result = subprocess.run(
+            
+            self._current_process = subprocess.Popen(
                 cmd,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                timeout=len(batch) * self.timeout / 1000 + 60
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
-            # 检查 DSS 执行结果
-            if result.returncode != 0:
-                logger.warning(f"批次 DSS 执行返回非零码: {result.returncode}")
-                # 检查是否是连接错误
-                if self._check_connection_error_in_log(log_dir):
-                    return False
-            
-            return True
+            timeout_seconds = len(batch) * self.timeout / 1000 + 60
+            try:
+                return_code = self._current_process.wait(timeout=timeout_seconds)
                 
-        except subprocess.TimeoutExpired:
-            logger.error(f"批次 DSS 执行超时")
-            return False
+                if return_code != 0:
+                    logger.warning(f"批次 DSS 执行返回非零码: {return_code}")
+                    if self._check_connection_error_in_log(log_dir):
+                        return False
+                
+                return True
+                    
+            except subprocess.TimeoutExpired:
+                logger.error(f"批次 DSS 执行超时")
+                self._current_process.kill()
+                self._current_process.wait()
+                return False
         finally:
             try:
                 os.unlink(js_file)
@@ -1036,15 +1067,48 @@ print("检测完成");
             memory_dir = Path(case["dat_dir"]) / "memory"
             if memory_dir.exists():
                 for dat_file in memory_dir.glob("*.dat"):
-                    self._remove_first_line(dat_file)
+                    self._remove_first_line_if_header(dat_file)
     
-    def _remove_first_line(self, file_path: Path):
-        """删除文件第一行"""
+    def _remove_first_line_if_header(self, file_path: Path):
+        """
+        如果文件第一行是 CCS 文件头格式，则删除第一行
+        
+        CCS .dat 文件头格式: 1651 <Format> <StartingAddress> <PageNum> <Length> [NewFormat]
+        例如: 
+        - 旧格式: 1651 1 80000000 0 10
+        - 新格式: 1651 9 88675cac 0 c278 c00000000
+        
+        如果第一行不是文件头格式，则不删除（避免重复删除数据行）
+        """
+        import re
         try:
             with open(file_path, "r", encoding="utf-8") as src:
                 lines = src.readlines()
-            with open(file_path, "w", encoding="utf-8") as dst:
-                dst.writelines(lines[1:])
+            
+            if not lines:
+                return
+            
+            first_line = lines[0].strip()
+            
+            # 检查第一行是否是 CCS 文件头格式
+            # 格式: 1651 <Format> <StartingAddress> <PageNum> <Length> [NewFormat]
+            # - MagicNumber: 固定为 1651
+            # - Format: 1-4 或 9 (十进制)
+            # - StartingAddress: 十六进制 (如 80000000, 88675cac)
+            # - PageNum: 十进制 (如 0, 1)
+            # - Length: 十六进制 (如 10, 1a70c, c278)
+            # - NewFormat: 可选，十六进制 (新格式时使用)
+            header_pattern = r'^1651\s+\d+\s+[0-9A-Fa-f]+\s+\d+\s+[0-9A-Fa-f]+(\s+[0-9A-Fa-f]+)?$'
+            
+            if re.match(header_pattern, first_line):
+                # 第一行是文件头，删除它
+                with open(file_path, "w", encoding="utf-8") as dst:
+                    dst.writelines(lines[1:])
+                logger.debug(f"已删除文件头: {file_path}")
+            else:
+                # 第一行不是文件头，说明文件已经被处理过，跳过
+                logger.debug(f"文件已处理过或无文件头，跳过: {file_path}")
+                
         except Exception as e:
             logger.debug(f"处理文件失败 {file_path}: {e}")
     
