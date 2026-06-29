@@ -29,6 +29,8 @@ from .exceptions import (
 )
 from .logger import get_logger, LogContext
 from .hardware_detector import quick_hardware_check
+from . import test_config_generator
+from . import report_generator
 
 logger = get_logger(__name__)
 
@@ -104,129 +106,21 @@ class TestExecutor:
                     pass
             self._current_process = None
         logger.info("测试执行已请求停止")
-    
+
     def generate_test_config(self, output_path: Optional[Path] = None) -> Path:
         """
-        从工作空间生成测试配置
-        
+        从工作空间生成测试配置（代理方法）
+
         Args:
             output_path: 输出文件路径，默认为 full_regr.json
-        
+
         Returns:
             生成的配置文件路径
         """
-        with LogContext(logger, "生成测试配置"):
-            # 优先使用配置中已有的用例
-            if self.config.cases:
-                logger.info(f"使用配置中的 {len(self.config.cases)} 个用例")
-                return self._generate_test_config_from_cases(output_path)
-            
-            # 否则从工作空间搜索 .out 文件
-            return self._generate_test_config_from_workspace(output_path)
-    
-    def _generate_test_config_from_cases(self, output_path: Optional[Path] = None) -> Path:
-        """
-        从配置中的用例生成测试配置
-        
-        Args:
-            output_path: 输出文件路径
-        
-        Returns:
-            生成的配置文件路径
-        """
-        cases = []
-        for case in self.config.cases:
-            # 确保 dat_dir 有有效值
-            if case.dat_dir:
-                dat_dir = case.dat_dir
-            else:
-                dat_dir = f"5_result_dat/{self.run_timestamp}/{case.name}"
-            
-            cases.append({
-                "name": case.name,
-                "out": str(case.out).replace("\\", "/"),
-                "dat_dir": dat_dir,
-                "segments": [
-                    {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
-                    for s in (case.segments if case.segments else self.config.memory_segments)
-                ]
-            })
-        
-        test_config = {
-            "ccxml": str(self.ccxml).replace("\\", "/"),
-            "device": self.device,
-            "cpu": self.cpu,
-            "timeout": self.timeout,
-            "result_addr": self.result_addr,
-            "success_val": self.success_val,
-            "error_val": self.error_val,
-            "cases": cases
-        }
-        
-        if output_path is None:
-            output_path = Path("full_regr.json")
-        
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(test_config, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"测试配置已保存: {output_path}")
-        return output_path
-    
-    def _generate_test_config_from_workspace(self, output_path: Optional[Path] = None) -> Path:
-        """
-        从工作空间搜索 .out 文件生成测试配置
-        
-        Args:
-            output_path: 输出文件路径
-        
-        Returns:
-            生成的配置文件路径
-        """
-        workspace = self.config.paths.ccs_workspace
-        
-        out_files = sorted(workspace.rglob("*.out"))
-        
-        if not out_files:
-            logger.warning(f"工作空间中没有找到 .out 文件: {workspace}")
-            return None
-        
-        logger.info(f"找到 {len(out_files)} 个 .out 文件")
-        
-        cases = []
-        for out_file in out_files:
-            case_name = out_file.stem
-            dat_dir = f"5_result_dat/{self.run_timestamp}/{case_name}"
-            
-            cases.append({
-                "name": case_name,
-                "out": str(out_file.resolve()).replace("\\", "/"),
-                "dat_dir": dat_dir,
-                "segments": [
-                    {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
-                    for s in self.config.memory_segments
-                ]
-            })
-        
-        test_config = {
-            "ccxml": str(self.ccxml).replace("\\", "/"),
-            "device": self.device,
-            "cpu": self.cpu,
-            "timeout": self.timeout,
-            "result_addr": self.result_addr,
-            "success_val": self.success_val,
-            "error_val": self.error_val,
-            "cases": cases
-        }
-        
-        if output_path is None:
-            output_path = Path("full_regr.json")
-        
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(test_config, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"测试配置已保存: {output_path}")
-        return output_path
-    
+        return test_config_generator.generate_test_config(
+            self.config, self.run_timestamp, output_path
+        )
+
     def run_all(self, test_config_path: Optional[Path] = None, 
                 start_batch: int = 0,
                 resume_from_last: bool = False) -> List[TestResult]:
@@ -305,11 +199,10 @@ class TestExecutor:
                     
                     logger.info(f"执行第 {i}/{start_batch + len(batches)} 批 ({len(batch)} 个用例)")
                     
-                    # 通知批次中的用例开始，并记录开始时间
+                    # 通知批次中的用例开始（开始时间在硬件检测后记录）
                     logger.info(f"通知批次开始，共 {len(batch)} 个用例")
                     for case in batch:
                         logger.info(f"通知用例开始: {case['name']}")
-                        case_start_times[case["name"]] = time.time()
                         if self.on_case_started:
                             try:
                                 self.on_case_started(case["name"])
@@ -352,6 +245,11 @@ class TestExecutor:
                         break
                     
                     logger.info(f"硬件连接正常，开始执行第 {i} 批")
+
+                    # 记录用例开始时间（在硬件检测之后，避免计入硬件检测耗时）
+                    for case in batch:
+                        case_start_times[case["name"]] = time.time()
+
                     batch_start_time = time.time()
                     dss_success = self._run_batch(batch, test_config, log_dir, f_out)
                     batch_end_time = time.time()
@@ -780,7 +678,7 @@ print("检测完成");
             是否成功执行该批次
         """
         log_file_path = str((log_dir / f"DSS_Batch_{batch[0]['name']}.xml").resolve()).replace("\\", "/")
-        
+
         config_json = {
             "global": {
                 "ccxml": global_config["ccxml"],
@@ -805,7 +703,9 @@ print("检测完成");
                             "width": s["width"]
                         }
                         for s in case["segments"]
-                    ]
+                    ],
+                    "export_points": case.get("export_points", [{"when": "after_run", "enabled": True, "subdir": "Memory"}]),
+                    "result_check": case.get("result_check", {"method": "breakpoint", "success_label": "Right", "fail_label": "IDLE"})
                 }
                 for case in batch
             ]
@@ -983,91 +883,21 @@ print("检测完成");
                 ))
         
         return results
-    
+
     def _generate_summary_report(self, cases: List[Dict], results: List[TestResult]):
-        """生成汇总报告"""
-        if not results:
-            return
-        
-        # 找到第一个有有效 dat_dir 的结果
-        time_dir = None
-        for result in results:
-            if result.dat_dir is not None:
-                time_dir = result.dat_dir.parent
-                break
-        
-        # 如果没有有效的 dat_dir，使用默认路径
-        if time_dir is None:
-            time_dir = Path("5_result_dat") / self.run_timestamp
-            time_dir.mkdir(parents=True, exist_ok=True)
-        
-        summary_csv = time_dir / "summary.csv"
-        
-        # 生成完整的 CSV 汇总文件（包含所有用例）
-        # 注意：DSS 脚本只生成批次内的汇总，这里生成总的汇总
-        with open(summary_csv, "w", encoding="utf-8") as f:
-            for result in results:
-                f.write(f"{result.case_name},{result.status}\n")
-        
-        success_count = sum(1 for r in results if r.status == "Success")
-        total_count = len(results)
-        
-        logger.info("=" * 60)
-        logger.info(f"测试汇总: {success_count}/{total_count} 成功")
-        logger.info(f"报告文件: {summary_csv}")
-        logger.info("=" * 60)
-        
-        self._generate_excel_report(time_dir, results)
-    
-    def _generate_excel_report(self, time_dir: Path, results: List[TestResult]):
-        """生成 Excel 报告"""
-        try:
-            import pandas as pd
-            from openpyxl import load_workbook
-            from openpyxl.styles import PatternFill
-            from openpyxl.utils import get_column_letter
-        except ImportError:
-            logger.warning("pandas/openpyxl 未安装，跳过 Excel 生成")
-            return
-        
-        summary_csv = time_dir / "summary.csv"
-        if not summary_csv.exists():
-            return
-        
-        df = pd.read_csv(summary_csv, names=["TestCase", "Status"])
-        df.insert(0, "序号", range(1, len(df) + 1))
-        df = df[["序号", "TestCase", "Status"]]
-        
-        xlsx = summary_csv.with_suffix(".xlsx")
-        df.to_excel(xlsx, index=False)
-        
-        wb = load_workbook(xlsx)
-        ws = wb.active
-        green = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-        red = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-        
-        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=3, max_col=3):
-            cell = row[0]
-            if cell.value == "Success":
-                cell.fill = green
-            elif cell.value in ["Error", "Timeout", "Exception"]:
-                cell.fill = red
-        
-        for col in ws.columns:
-            max_len = max(len(str(cell.value or "")) for cell in col)
-            col_letter = get_column_letter(col[0].column)
-            ws.column_dimensions[col_letter].width = max_len + 2
-        
-        wb.save(xlsx)
-        logger.info(f"Excel 报告已生成: {xlsx}")
-    
+        """生成汇总报告（代理方法）"""
+        report_generator.generate_summary_report(self.run_timestamp, cases, results)
+
     def _post_process_dat_files(self, cases: List[Dict]):
         """后处理 .dat 文件（删除文件头）"""
         for case in cases:
-            memory_dir = Path(case["dat_dir"]) / "memory"
-            if memory_dir.exists():
-                for dat_file in memory_dir.glob("*.dat"):
-                    self._remove_first_line_if_header(dat_file)
+            export_points = case.get("export_points", [{"when": "after_run", "subdir": "Memory"}])
+            for ep in export_points:
+                subdir = ep.get("subdir", "Memory")
+                memory_dir = Path(case["dat_dir"]) / subdir
+                if memory_dir.exists():
+                    for dat_file in memory_dir.glob("*.dat"):
+                        self._remove_first_line_if_header(dat_file)
     
     def _remove_first_line_if_header(self, file_path: Path):
         """

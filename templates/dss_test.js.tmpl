@@ -1,12 +1,17 @@
 /**
  * DSS 测试脚本模板
- * 
+ *
  * 此模板由 Python 脚本动态填充配置数据
  * 用于执行 TI C2000 DSP 的 FastRTS 库函数测试
- * 
+ *
  * 修改说明：支持通过检测 ESTOP0/IDLE 断点判断测试结果
  * - 停在 Right (ESTOP0) = 测试通过
  * - 停在 IDLE = 测试失败
+ *
+ * 修改说明：支持多时间点内存导出
+ * - after_load: 程序烧录后立即导出
+ * - before_run: 运行前导出
+ * - after_run: 运行完成后导出（默认）
  */
 
 importPackage(Packages.com.ti.debug.engine.scripting);
@@ -65,12 +70,121 @@ function formatHexString(hexString, width) {
     return hexString;
 }
 
+// ==================== 导出内存段 ====================
+function exportMemorySegments(testCfg, subdir) {
+    var datDir = testCfg.dat_dir + "/" + subdir;
+    var f = new java.io.File(datDir);
+    if (!f.exists()) f.mkdirs();
+
+    for (var i = 0; i < testCfg.segments.length; i++) {
+        var seg = testCfg.segments[i];
+        var fname = datDir + "/" + seg.name + ".dat";
+        env.traceWrite("    保存: " + seg.name + " -> " + fname);
+        try {
+            session.memory.saveData2(seg.addr, 0, seg.len, fname, seg.width, false);
+        } catch (saveErr) {
+            env.traceWrite("    警告: 保存失败: " + saveErr.message);
+        }
+    }
+}
+
+// ==================== 获取导出时间点配置 ====================
+function getExportConfig(exportPoints) {
+    if (!exportPoints || exportPoints.length === 0) {
+        return { when: "after_run", enabled: true, subdir: "Memory" };
+    }
+    // 返回第一个启用的导出点
+    for (var i = 0; i < exportPoints.length; i++) {
+        var ep = exportPoints[i];
+        if (ep.enabled) {
+            return ep;
+        }
+    }
+    return exportPoints[0]; // 如果没有启用的，返回第一个
+}
+
+// ==================== 检查结果（断点方式） ====================
+function checkResultByBreakpoint(testCfg, pc) {
+    var successAddr = null;
+    var failAddr = null;
+
+    // 获取成功标签地址
+    try {
+        successAddr = session.symbol.getAddress(testCfg.result_check.success_label);
+    } catch (e) {
+        env.traceWrite(">>> 警告: 未找到 '" + testCfg.result_check.success_label + "' 符号");
+    }
+
+    // 获取失败标签地址
+    try {
+        failAddr = session.symbol.getAddress(testCfg.result_check.fail_label);
+    } catch (e) {
+        env.traceWrite(">>> 警告: 未找到 '" + testCfg.result_check.fail_label + "' 符号");
+    }
+
+    // 设置断点
+    if (successAddr) {
+        session.breakpoint.add("0x" + formatHexString(successAddr.toString(16), 4));
+        env.traceWrite(">>> 在 " + testCfg.result_check.success_label + " 设置断点");
+    }
+    if (failAddr) {
+        session.breakpoint.add("0x" + formatHexString(failAddr.toString(16), 4));
+        env.traceWrite(">>> 在 " + testCfg.result_check.fail_label + " 设置断点");
+    }
+
+    // 判断结果
+    if (successAddr && pc.toString(16) === successAddr.toString(16)) {
+        return "Success";
+    } else if (failAddr && pc.toString(16) === failAddr.toString(16)) {
+        return "Error";
+    } else {
+        return "Unknown(0x" + formatHexString(pc.toString(16), 4) + ")";
+    }
+}
+
+// ==================== 检查结果（内存值方式） ====================
+function checkResultByMemory(testCfg) {
+    try {
+        var addr = parseInt(testCfg.result_check.check_addr, 16);
+        var value = session.memory.readWord(addr);
+        env.traceWrite(">>> 读取内存地址 0x" + testCfg.result_check.check_addr + " = 0x" + value.toString(16));
+
+        if (value === parseInt(testCfg.result_check.success_val, 16)) {
+            return "Success";
+        } else if (value === parseInt(testCfg.result_check.fail_val, 16)) {
+            return "Error";
+        } else {
+            return "Unknown(0x" + value.toString(16) + ")";
+        }
+    } catch (e) {
+        env.traceWrite(">>> 读取内存失败: " + e.message);
+        return "Error:MemoryRead";
+    }
+}
+
+// ==================== 检查结果（表达式方式） ====================
+function checkResultByExpression(testCfg) {
+    try {
+        var result = session.expression.evaluate(testCfg.result_check.expression);
+        env.traceWrite(">>> 表达式结果: " + result);
+
+        if (result.toString() === testCfg.result_check.expected_val) {
+            return "Success";
+        } else {
+            return "Error(" + result + ")";
+        }
+    } catch (e) {
+        env.traceWrite(">>> 表达式评估失败: " + e.message);
+        return "Error:Expression";
+    }
+}
+
 // ==================== 执行单个测试用例 ====================
 function runTestCase(testCfg) {
     var result = "Error";
     var startTime = Date.now();
     var timeoutFlag = false;
-    
+
     // 超时监控线程
     var watchdog = new java.lang.Thread(function() {
         while (!timeoutFlag) {
@@ -87,14 +201,14 @@ function runTestCase(testCfg) {
             }
         }
     });
-    
+
     watchdog.start();
-    
+
     try {
         // 1. 加载程序
         env.traceWrite(">>> 加载程序: " + testCfg.out);
         session.memory.loadProgram(testCfg.out);
-        
+
         // 2. 检查加载后的 PC（应该停在 main 入口）
         java.lang.Thread.sleep(100);
         if (session.target.isHalted()) {
@@ -105,42 +219,61 @@ function runTestCase(testCfg) {
                 env.traceWrite(">>> 警告: 无法获取加载后 PC");
             }
         }
-        
+
+        // 获取导出配置
+        var exportCfg = getExportConfig(testCfg.export_points);
+
+        // 2.1 导出内存段（烧录后）- 检查初始值
+        if (exportCfg.when === "after_load") {
+            env.traceWrite(">>> 导出内存段（烧录后）...");
+            exportMemorySegments(testCfg, exportCfg.subdir);
+        }
+
         // 注意：不复位目标，直接从 main 入口运行（与 CCS 行为一致）
         session.breakpoint.removeAll();
-        
-        // 3. 获取断点地址（Right/IDLE 标签）
-        var rightAddr = null;
-        var idleAddr = null;
-        
-        try {
-            rightAddr = session.symbol.getAddress("Right");
-            env.traceWrite(">>> Right (ESTOP0) 地址: 0x" + formatHexString(rightAddr.toString(16), 4));
-        } catch (e) {
-            env.traceWrite(">>> 警告: 未找到 'Right' 符号");
+
+        // 3. 获取结果判断配置
+        var resultCheck = testCfg.result_check || { method: "breakpoint", success_label: "Right", fail_label: "IDLE" };
+
+        // 4. 设置断点（仅断点方式需要）
+        if (resultCheck.method === "breakpoint") {
+            var successAddr = null;
+            var failAddr = null;
+
+            try {
+                successAddr = session.symbol.getAddress(resultCheck.success_label);
+                env.traceWrite(">>> " + resultCheck.success_label + " 地址: 0x" + formatHexString(successAddr.toString(16), 4));
+            } catch (e) {
+                env.traceWrite(">>> 警告: 未找到 '" + resultCheck.success_label + "' 符号");
+            }
+
+            try {
+                failAddr = session.symbol.getAddress(resultCheck.fail_label);
+                env.traceWrite(">>> " + resultCheck.fail_label + " 地址: 0x" + formatHexString(failAddr.toString(16), 4));
+            } catch (e) {
+                env.traceWrite(">>> 警告: 未找到 '" + resultCheck.fail_label + "' 符号");
+            }
+
+            if (successAddr) {
+                session.breakpoint.add("0x" + formatHexString(successAddr.toString(16), 4));
+                env.traceWrite(">>> 在 " + resultCheck.success_label + " 设置断点");
+            }
+            if (failAddr) {
+                session.breakpoint.add("0x" + formatHexString(failAddr.toString(16), 4));
+                env.traceWrite(">>> 在 " + resultCheck.fail_label + " 设置断点");
+            }
         }
-        
-        try {
-            idleAddr = session.symbol.getAddress("IDLE");
-            env.traceWrite(">>> IDLE 地址: 0x" + formatHexString(idleAddr.toString(16), 4));
-        } catch (e) {
-            env.traceWrite(">>> 警告: 未找到 'IDLE' 符号");
+
+        // 4.1 导出内存段（运行前）- 检查预设数据
+        if (exportCfg.when === "before_run") {
+            env.traceWrite(">>> 导出内存段（运行前）...");
+            exportMemorySegments(testCfg, exportCfg.subdir);
         }
-        
-        // 4. 设置断点
-        if (rightAddr) {
-            session.breakpoint.add("0x" + formatHexString(rightAddr.toString(16), 4));
-            env.traceWrite(">>> 在 Right (ESTOP0) 设置断点");
-        }
-        if (idleAddr) {
-            session.breakpoint.add("0x" + formatHexString(idleAddr.toString(16), 4));
-            env.traceWrite(">>> 在 IDLE 设置断点");
-        }
-        
+
         // 5. 运行程序
         env.traceWrite(">>> 运行程序...");
         session.target.run();
-        
+
         var t0 = java.lang.System.currentTimeMillis();
         while (!session.target.isHalted()) {
             if (timeoutFlag) break;
@@ -149,101 +282,75 @@ function runTestCase(testCfg) {
                 throw new Error("Run timeout");
             }
         }
-        
+
         if (timeoutFlag) {
             result = "Timeout";
         } else {
-            // 7. 检查程序停在哪个断点
-            var pc = null;
-            var pcHex = null;
-            
-            // 尝试多种方法获取 PC
-            var pc = null;
-            var pcHex = null;
-            
-            try {
-                // 方法1: 使用 session.registers.getPC()
-                if (session.registers) {
-                    pc = session.registers.getPC();
-                    pcHex = formatHexString(pc.toString(16), 4);
-                    env.traceWrite(">>> 程序停止，PC = 0x" + pcHex);
-                } else {
-                    throw new Error("session.registers is undefined");
-                }
-            } catch (regErr) {
-                env.traceWrite(">>> 警告: 无法通过 registers 获取 PC: " + regErr.message);
-                
-                // 方法2: 尝试使用表达式评估获取 PC
+            // 7. 根据判断方式检查结果
+            if (resultCheck.method === "breakpoint") {
+                // 断点方式：获取 PC 并比较
+                var pc = null;
+                var pcHex = null;
+
                 try {
-                    var pcExpr = session.expression.evaluate("$PC");
-                    env.traceWrite(">>> PC 表达式返回: " + pcExpr);
-                    
-                    // pcExpr 可能是字符串 "0x3fb8b9" 或数字
-                    if (pcExpr) {
-                        if (typeof pcExpr === "string") {
-                            // 如果是字符串 "0x3fb8b9"
-                            pc = parseInt(pcExpr, 16);
-                            pcHex = formatHexString(pc.toString(16), 4);
-                        } else if (typeof pcExpr === "number") {
-                            pc = pcExpr;
-                            pcHex = formatHexString(pc.toString(16), 4);
-                        } else if (pcExpr.value) {
-                            // 如果是一个对象，有 value 属性
-                            pc = parseInt(pcExpr.value);
-                            pcHex = formatHexString(pc.toString(16), 4);
-                        } else {
-                            throw new Error("未知的 PC 表达式类型: " + typeof pcExpr);
-                        }
-                        env.traceWrite(">>> 程序停止，PC (通过表达式) = 0x" + pcHex);
+                    if (session.registers) {
+                        pc = session.registers.getPC();
+                        pcHex = formatHexString(pc.toString(16), 4);
+                        env.traceWrite(">>> 程序停止，PC = 0x" + pcHex);
                     } else {
-                        throw new Error("表达式评估返回空值");
+                        throw new Error("session.registers is undefined");
                     }
-                } catch (exprErr) {
-                    env.traceWrite(">>> 错误: 无法获取 PC 值: " + exprErr.message);
-                    result = "Error:CannotGetPC";
-                    throw new Error("CannotGetPC");
+                } catch (regErr) {
+                    env.traceWrite(">>> 警告: 无法通过 registers 获取 PC: " + regErr.message);
+
+                    try {
+                        var pcExpr = session.expression.evaluate("$PC");
+                        if (pcExpr) {
+                            if (typeof pcExpr === "string") {
+                                pc = parseInt(pcExpr, 16);
+                            } else if (typeof pcExpr === "number") {
+                                pc = pcExpr;
+                            } else if (pcExpr.value) {
+                                pc = parseInt(pcExpr.value);
+                            }
+                            pcHex = formatHexString(pc.toString(16), 4);
+                        }
+                    } catch (exprErr) {
+                        result = "Error:CannotGetPC";
+                        throw new Error("CannotGetPC");
+                    }
                 }
-            }
-            
-            // 获取 compare_memory_blocks 地址用于比较
-            var compareFuncAddr = null;
-            try {
-                compareFuncAddr = session.symbol.getAddress("compare_memory_blocks");
-            } catch (e) {
-                // 忽略错误
-            }
-            
-            if (rightAddr && pc.toString(16) === rightAddr.toString(16)) {
-                result = "Success";
-                env.traceWrite(">>> 停在 Right (ESTOP0)，测试通过");
-            } else if (idleAddr && pc.toString(16) === idleAddr.toString(16)) {
-                result = "Error";
-                env.traceWrite(">>> 停在 IDLE，测试失败");
+
+                if (pc) {
+                    result = checkResultByBreakpoint(testCfg, pc);
+                    if (result === "Success") {
+                        env.traceWrite(">>> 停在 " + resultCheck.success_label + "，测试通过");
+                    } else if (result === "Error") {
+                        env.traceWrite(">>> 停在 " + resultCheck.fail_label + "，测试失败");
+                    } else {
+                        env.traceWrite(">>> 停在未知位置");
+                    }
+                }
+            } else if (resultCheck.method === "memory") {
+                // 内存值方式
+                result = checkResultByMemory(testCfg);
+            } else if (resultCheck.method === "expression") {
+                // 表达式方式
+                result = checkResultByExpression(testCfg);
             } else {
-                result = "Unknown(0x" + pcHex + ")";
-                env.traceWrite(">>> 停在未知位置");
+                env.traceWrite(">>> 错误: 未知的判断方式 " + resultCheck.method);
+                result = "Error:UnknownMethod";
             }
         }
-        
+
         // 8. 导出内存段（运行后）- 此时 test_output 才有数据
-        if (result === "Success" || result === "Error" || result.startsWith("Unknown")) {
-            env.traceWrite(">>> 导出内存段...");
-            var datDir = testCfg.dat_dir + "/memory";
-            var f = new java.io.File(datDir);
-            if (!f.exists()) f.mkdirs();
-            
-            for (var i = 0; i < testCfg.segments.length; i++) {
-                var seg = testCfg.segments[i];
-                var fname = datDir + "/" + seg.name + ".dat";
-                env.traceWrite("    保存: " + seg.name + " -> " + fname);
-                try {
-                    session.memory.saveData2(seg.addr, 0, seg.len, fname, seg.width, false);
-                } catch (saveErr) {
-                    env.traceWrite("    警告: 保存失败: " + saveErr.message);
-                }
+        if (exportCfg.when === "after_run") {
+            if (result === "Success" || result === "Error" || result.indexOf("Unknown") === 0) {
+                env.traceWrite(">>> 导出内存段（运行后）...");
+                exportMemorySegments(testCfg, exportCfg.subdir);
             }
         }
-        
+
     } catch (err) {
         if (!timeoutFlag) {
             result = "Exception:" + err.message;
@@ -253,12 +360,12 @@ function runTestCase(testCfg) {
         watchdog.interrupt();
         session.breakpoint.removeAll();
     }
-    
+
     // 写入结果
     var summary = new java.io.FileWriter(testCfg.dat_dir + "/summary.csv", false);
     summary.write(testCfg.case_name + "," + result + "\n");
     summary.close();
-    
+
     env.traceWrite(">>> 结果: " + result);
     return result;
 }

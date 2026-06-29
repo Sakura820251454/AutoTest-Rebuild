@@ -8,18 +8,19 @@
 
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QComboBox, QSpinBox, QPushButton,
-    QGroupBox, QScrollArea, QFrame, QMessageBox, QTableWidget, QTableWidgetItem
+    QGroupBox, QScrollArea, QFrame, QMessageBox, QTableWidget, QTableWidgetItem,
+    QCheckBox
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config import Config
+from src.config import Config, ExportPoint, DEFAULT_EXPORT_POINTS
 from .path_selector import PathSelector
 
 
@@ -30,15 +31,24 @@ class ConfigPanel(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.config: Optional[Config] = None
         self.path_selectors: Dict[str, PathSelector] = {}
         self.build_inputs: Dict[str, Any] = {}
         self.test_inputs: Dict[str, Any] = {}
-        
+
         # 内存段配置相关
         self.memory_table = None
-        
+
+        # 导出时间点配置相关
+        self.export_when_combo = None
+
+        # 结果判断配置相关
+        self.result_method_combo = None
+        self.breakpoint_group = None
+        self.memory_group = None
+        self.expression_group = None
+
         self._setup_ui()
     
     def _setup_ui(self):
@@ -240,9 +250,155 @@ class ConfigPanel(QWidget):
         format_info.setWordWrap(True)
         format_info.setStyleSheet("color: #666;")
         memory_layout.addWidget(format_info)
-        
+
         content_layout.addWidget(memory_group)
-        
+
+        # ===== 导出时间点配置组 =====
+        export_group = QGroupBox("导出时间点配置")
+        export_layout = QVBoxLayout(export_group)
+        export_layout.setSpacing(10)
+
+        # 导出时间点选择
+        export_select_layout = QHBoxLayout()
+        export_select_layout.addWidget(QLabel("内存导出时机:"))
+
+        self.export_when_combo = QComboBox()
+        self.export_when_combo.addItems(["after_load", "before_run", "after_run"])
+        self.export_when_combo.setCurrentText("after_run")
+        self.export_when_combo.setToolTip("选择在哪个时间点导出内存数据")
+        self.export_when_combo.currentTextChanged.connect(self.on_config_modified)
+        export_select_layout.addWidget(self.export_when_combo)
+
+        export_select_layout.addStretch()
+        export_layout.addLayout(export_select_layout)
+
+        # 导出时间点说明
+        export_info_label = QLabel("导出时间点说明：")
+        export_info_label.setStyleSheet("font-weight: bold;")
+        export_layout.addWidget(export_info_label)
+
+        export_desc1 = QLabel("- after_load：程序烧录到板子后立即导出，用于验证初始值")
+        export_desc1.setWordWrap(True)
+        export_layout.addWidget(export_desc1)
+
+        export_desc2 = QLabel("- before_run：程序运行前导出，用于检查预设数据")
+        export_desc2.setWordWrap(True)
+        export_layout.addWidget(export_desc2)
+
+        export_desc3 = QLabel("- after_run：程序运行完成后导出，用于检查最终结果（默认）")
+        export_desc3.setWordWrap(True)
+        export_layout.addWidget(export_desc3)
+
+        content_layout.addWidget(export_group)
+
+        # ===== 结果判断配置组 =====
+        result_group = QGroupBox("结果判断配置")
+        result_layout = QVBoxLayout(result_group)
+        result_layout.setSpacing(10)
+
+        # 判断方式选择
+        method_layout = QHBoxLayout()
+        method_layout.addWidget(QLabel("判断方式:"))
+
+        self.result_method_combo = QComboBox()
+        self.result_method_combo.addItems(["breakpoint", "memory", "expression"])
+        self.result_method_combo.setCurrentText("breakpoint")
+        self.result_method_combo.setToolTip("选择如何判断测试结果")
+        self.result_method_combo.currentTextChanged.connect(self.on_result_method_changed)
+        method_layout.addWidget(self.result_method_combo)
+
+        method_layout.addStretch()
+        result_layout.addLayout(method_layout)
+
+        # 断点方式参数（默认显示）
+        self.breakpoint_group = QGroupBox("断点方式参数")
+        breakpoint_layout = QGridLayout(self.breakpoint_group)
+
+        breakpoint_layout.addWidget(QLabel("成功标签:"), 0, 0)
+        self.success_label_edit = QLineEdit("Right")
+        self.success_label_edit.setToolTip("程序停在此标签时判定为成功")
+        self.success_label_edit.textChanged.connect(self.on_config_modified)
+        breakpoint_layout.addWidget(self.success_label_edit, 0, 1)
+
+        breakpoint_layout.addWidget(QLabel("失败标签:"), 1, 0)
+        self.fail_label_edit = QLineEdit("IDLE")
+        self.fail_label_edit.setToolTip("程序停在此标签时判定为失败")
+        self.fail_label_edit.textChanged.connect(self.on_config_modified)
+        breakpoint_layout.addWidget(self.fail_label_edit, 1, 1)
+
+        breakpoint_layout.setColumnStretch(1, 1)
+        result_layout.addWidget(self.breakpoint_group)
+
+        # 内存值方式参数
+        self.memory_group = QGroupBox("内存值方式参数")
+        memory_check_layout = QGridLayout(self.memory_group)
+
+        memory_check_layout.addWidget(QLabel("检查地址:"), 0, 0)
+        self.check_addr_edit = QLineEdit()
+        self.check_addr_edit.setPlaceholderText("0x7625")
+        self.check_addr_edit.setToolTip("要检查的内存地址")
+        self.check_addr_edit.textChanged.connect(self.on_config_modified)
+        memory_check_layout.addWidget(self.check_addr_edit, 0, 1)
+
+        memory_check_layout.addWidget(QLabel("成功值:"), 1, 0)
+        self.success_val_edit = QLineEdit()
+        self.success_val_edit.setPlaceholderText("0xCCCC")
+        self.success_val_edit.setToolTip("内存值等于此值时判定为成功")
+        self.success_val_edit.textChanged.connect(self.on_config_modified)
+        memory_check_layout.addWidget(self.success_val_edit, 1, 1)
+
+        memory_check_layout.addWidget(QLabel("失败值:"), 2, 0)
+        self.fail_val_edit = QLineEdit()
+        self.fail_val_edit.setPlaceholderText("0xEEEE")
+        self.fail_val_edit.setToolTip("内存值等于此值时判定为失败")
+        self.fail_val_edit.textChanged.connect(self.on_config_modified)
+        memory_check_layout.addWidget(self.fail_val_edit, 2, 1)
+
+        memory_check_layout.setColumnStretch(1, 1)
+        self.memory_group.setVisible(False)
+        result_layout.addWidget(self.memory_group)
+
+        # 表达式方式参数
+        self.expression_group = QGroupBox("表达式方式参数")
+        expression_layout = QGridLayout(self.expression_group)
+
+        expression_layout.addWidget(QLabel("表达式:"), 0, 0)
+        self.expression_edit = QLineEdit()
+        self.expression_edit.setPlaceholderText("$PC")
+        self.expression_edit.setToolTip("要评估的表达式")
+        self.expression_edit.textChanged.connect(self.on_config_modified)
+        expression_layout.addWidget(self.expression_edit, 0, 1)
+
+        expression_layout.addWidget(QLabel("期望值:"), 1, 0)
+        self.expected_val_edit = QLineEdit()
+        self.expected_val_edit.setPlaceholderText("0x3fb8b9")
+        self.expected_val_edit.setToolTip("表达式结果等于此值时判定为成功")
+        self.expected_val_edit.textChanged.connect(self.on_config_modified)
+        expression_layout.addWidget(self.expected_val_edit, 1, 1)
+
+        expression_layout.setColumnStretch(1, 1)
+        self.expression_group.setVisible(False)
+        result_layout.addWidget(self.expression_group)
+
+        # 结果判断说明
+        result_info_label = QLabel("判断方式说明：")
+        result_info_label.setStyleSheet("font-weight: bold;")
+        result_layout.addWidget(result_info_label)
+
+        result_desc1 = QLabel("- breakpoint：通过检查程序停在哪个断点来判断结果（默认）")
+        result_desc1.setWordWrap(True)
+        result_layout.addWidget(result_desc1)
+
+        result_desc2 = QLabel("- memory：通过读取指定内存地址的值来判断结果")
+        result_desc2.setWordWrap(True)
+        result_layout.addWidget(result_desc2)
+
+        result_desc3 = QLabel("- expression：通过评估表达式的结果来判断")
+        result_desc3.setWordWrap(True)
+        result_layout.addWidget(result_desc3)
+
+        content_layout.addWidget(result_group)
+
         # 添加弹性空间
         content_layout.addStretch()
         
@@ -299,7 +455,18 @@ class ConfigPanel(QWidget):
         self.batch_size_spin.setValue(config.test.test_batch_size)
         self.device_edit.setText(config.test.device)
         self.cpu_edit.setText(config.test.cpu)
-        
+
+        # 加载结果判断配置
+        result_check = config.result_check
+        self.result_method_combo.setCurrentText(result_check.method)
+        self.success_label_edit.setText(result_check.success_label)
+        self.fail_label_edit.setText(result_check.fail_label)
+        self.check_addr_edit.setText(result_check.check_addr)
+        self.success_val_edit.setText(result_check.success_val)
+        self.fail_val_edit.setText(result_check.fail_val)
+        self.expression_edit.setText(result_check.expression)
+        self.expected_val_edit.setText(result_check.expected_val)
+
         # 加载内存段配置
         self.memory_table.setRowCount(0)
         for segment in config.memory_segments:
@@ -325,7 +492,12 @@ class ConfigPanel(QWidget):
             width_item = QTableWidgetItem(str(segment.width))
             width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.memory_table.setItem(row, 3, width_item)
-    
+
+        # 加载导出时间点配置
+        export_points = config.export_points if config.export_points else DEFAULT_EXPORT_POINTS
+        if export_points:
+            self.export_when_combo.setCurrentText(export_points[0].when)
+
     def get_config_dict(self) -> Dict[str, Any]:
         """
         从界面获取配置字典
@@ -362,17 +534,18 @@ class ConfigPanel(QWidget):
             
             # 内存段配置
             "memory_segments": {
-                "segments": []
+                "segments": [],
+                "export_points": []
             }
         }
-        
+
         # 收集内存段配置
         for row in range(self.memory_table.rowCount()):
             name_item = self.memory_table.item(row, 0)
             addr_item = self.memory_table.item(row, 1)
             len_item = self.memory_table.item(row, 2)
             width_item = self.memory_table.item(row, 3)
-            
+
             if name_item and addr_item and len_item and width_item:
                 segment = {
                     "name": name_item.text(),
@@ -381,7 +554,25 @@ class ConfigPanel(QWidget):
                     "width": int(width_item.text())
                 }
                 config_dict["memory_segments"]["segments"].append(segment)
-        
+
+        # 收集导出时间点配置
+        when = self.export_when_combo.currentText()
+        config_dict["memory_segments"]["export_points"] = [
+            {"when": when, "enabled": True, "subdir": "Memory"}
+        ]
+
+        # 收集结果判断配置
+        config_dict["result_check"] = {
+            "method": self.result_method_combo.currentText(),
+            "success_label": self.success_label_edit.text(),
+            "fail_label": self.fail_label_edit.text(),
+            "check_addr": self.check_addr_edit.text(),
+            "success_val": self.success_val_edit.text(),
+            "fail_val": self.fail_val_edit.text(),
+            "expression": self.expression_edit.text(),
+            "expected_val": self.expected_val_edit.text()
+        }
+
         return config_dict
     
     def validate(self) -> bool:
@@ -442,7 +633,24 @@ class ConfigPanel(QWidget):
                 return False
         
         return True
-    
+
+    def on_result_method_changed(self, method: str):
+        """判断方式改变处理"""
+        # 隐藏所有参数组
+        self.breakpoint_group.setVisible(False)
+        self.memory_group.setVisible(False)
+        self.expression_group.setVisible(False)
+
+        # 显示对应的参数组
+        if method == "breakpoint":
+            self.breakpoint_group.setVisible(True)
+        elif method == "memory":
+            self.memory_group.setVisible(True)
+        elif method == "expression":
+            self.expression_group.setVisible(True)
+
+        self.config_changed.emit()
+
     def on_config_modified(self):
         """配置修改处理"""
         self.config_changed.emit()
@@ -503,17 +711,17 @@ class ConfigPanel(QWidget):
         selected_rows = set()
         for item in self.memory_table.selectedItems():
             selected_rows.add(item.row())
-        
+
         if not selected_rows:
             QMessageBox.warning(self, "提示", "请先选择要删除的内存段")
             return
-        
+
         # 从后往前删除，避免索引混乱
         for row in sorted(selected_rows, reverse=True):
             self.memory_table.removeRow(row)
-        
+
         self.config_changed.emit()
-    
+
     def on_restore_default(self):
         """恢复默认配置"""
         reply = QMessageBox.question(
@@ -575,5 +783,18 @@ class ConfigPanel(QWidget):
                 width_item = QTableWidgetItem(str(segment["width"]))
                 width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.memory_table.setItem(row, 3, width_item)
-            
+
+            # 恢复默认导出时间点配置
+            self.export_when_combo.setCurrentText("after_run")
+
+            # 恢复默认结果判断配置
+            self.result_method_combo.setCurrentText("breakpoint")
+            self.success_label_edit.setText("Right")
+            self.fail_label_edit.setText("IDLE")
+            self.check_addr_edit.clear()
+            self.success_val_edit.clear()
+            self.fail_val_edit.clear()
+            self.expression_edit.clear()
+            self.expected_val_edit.clear()
+
             self.config_changed.emit()

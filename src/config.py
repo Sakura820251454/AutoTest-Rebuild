@@ -128,12 +128,52 @@ class MemorySegment:
 
 
 @dataclass
+class ExportPoint:
+    """内存导出时间点配置"""
+    when: str  # after_load, before_run, after_run
+    enabled: bool = True
+    subdir: str = "Memory"  # 子目录名
+
+
+# 默认导出时间点：仅在运行后导出
+DEFAULT_EXPORT_POINTS = [
+    ExportPoint(when="after_run", enabled=True, subdir="Memory")
+]
+
+
+@dataclass
+class ResultCheck:
+    """测试结果判断配置"""
+    method: str = "breakpoint"  # 判断方式: breakpoint, memory, expression
+    # breakpoint 方式参数
+    success_label: str = "Right"  # 成功时停在的标签名
+    fail_label: str = "IDLE"  # 失败时停在的标签名
+    # memory 方式参数
+    check_addr: str = ""  # 要检查的内存地址
+    success_val: str = ""  # 成功时的值
+    fail_val: str = ""  # 失败时的值
+    # expression 方式参数
+    expression: str = ""  # 要评估的表达式
+    expected_val: str = ""  # 期望的值
+
+
+# 默认结果判断配置（断点方式）
+DEFAULT_RESULT_CHECK = ResultCheck(
+    method="breakpoint",
+    success_label="Right",
+    fail_label="IDLE"
+)
+
+
+@dataclass
 class TestCase:
     """测试用例配置"""
     name: str
     out: Path
     dat_dir: str
     segments: List[MemorySegment] = field(default_factory=list)
+    export_points: List[ExportPoint] = field(default_factory=lambda: list(DEFAULT_EXPORT_POINTS))
+    result_check: ResultCheck = field(default_factory=lambda: ResultCheck())
 
 
 class Config:
@@ -160,7 +200,9 @@ class Config:
         self.test: TestConfig = None
         self.cases: List[TestCase] = []
         self.memory_segments: List[MemorySegment] = []
-        
+        self.export_points: List[ExportPoint] = list(DEFAULT_EXPORT_POINTS)
+        self.result_check: ResultCheck = ResultCheck()
+
         self._parse(config_dict)
     
     @classmethod
@@ -207,20 +249,24 @@ class Config:
     def _parse(self, config_dict: Dict[str, Any] = None):
         """解析配置"""
         raw = config_dict if config_dict is not None else self._raw
-        
+
         is_new_format = "paths" in raw or "tools" in raw or "build" in raw or "test" in raw or "memory_segments" in raw
-        
+
         if is_new_format:
             self.paths = self._parse_paths_new(raw)
             self.build = self._parse_build_config_new(raw)
             self.test = self._parse_test_config_new(raw)
             self.memory_segments = self._parse_memory_segments_new(raw)
+            self.export_points = self._parse_export_points_new(raw)
+            self.result_check = self._parse_result_check_new(raw)
         else:
             self.paths = self._parse_paths_legacy(raw)
             self.build = self._parse_build_config_legacy(raw)
             self.test = self._parse_test_config_legacy(raw)
             self.memory_segments = self._parse_memory_segments_legacy(raw)
-        
+            self.export_points = self._parse_export_points_legacy(raw)
+            self.result_check = self._parse_result_check_legacy(raw)
+
         self.cases = self._parse_cases(raw)
     
     def _resolve_path(self, path_str: str) -> Path:
@@ -345,7 +391,7 @@ class Config:
             segments_data = raw["cases"][0]["segments"]
         else:
             segments_data = DEFAULT_MEMORY_SEGMENTS
-        
+
         return [
             MemorySegment(
                 name=s["name"],
@@ -355,7 +401,54 @@ class Config:
             )
             for s in segments_data
         ]
-    
+
+    def _parse_export_points_new(self, raw: Dict) -> List[ExportPoint]:
+        """解析新格式导出时间点配置"""
+        mem = raw.get("memory_segments", {})
+        points_data = mem.get("export_points", None)
+
+        # 如果没有配置导出时间点，使用默认值
+        if points_data is None:
+            return list(DEFAULT_EXPORT_POINTS)
+
+        return [
+            ExportPoint(
+                when=p.get("when", "after_run"),
+                enabled=p.get("enabled", True),
+                subdir=p.get("subdir", "Memory")
+            )
+            for p in points_data
+        ]
+
+    def _parse_export_points_legacy(self, raw: Dict) -> List[ExportPoint]:
+        """解析旧格式导出时间点配置"""
+        # 旧格式默认只在运行后导出
+        return list(DEFAULT_EXPORT_POINTS)
+
+    def _parse_result_check_new(self, raw: Dict) -> ResultCheck:
+        """解析新格式结果判断配置"""
+        test = raw.get("test", {})
+        rc_data = test.get("result_check", {})
+
+        if not rc_data:
+            return ResultCheck()
+
+        return ResultCheck(
+            method=rc_data.get("method", "breakpoint"),
+            success_label=rc_data.get("success_label", "Right"),
+            fail_label=rc_data.get("fail_label", "IDLE"),
+            check_addr=rc_data.get("check_addr", ""),
+            success_val=rc_data.get("success_val", ""),
+            fail_val=rc_data.get("fail_val", ""),
+            expression=rc_data.get("expression", ""),
+            expected_val=rc_data.get("expected_val", "")
+        )
+
+    def _parse_result_check_legacy(self, raw: Dict) -> ResultCheck:
+        """解析旧格式结果判断配置"""
+        # 旧格式使用默认断点方式
+        return ResultCheck()
+
     def _parse_cases(self, raw: Dict) -> List[TestCase]:
         """解析测试用例配置"""
         cases = []
@@ -370,11 +463,43 @@ class Config:
                     )
                     for s in case_data.get("segments", self.memory_segments)
                 ]
+                # 解析导出时间点配置
+                export_points_data = case_data.get("export_points", None)
+                if export_points_data is not None:
+                    export_points = [
+                        ExportPoint(
+                            when=p.get("when", "after_run"),
+                            enabled=p.get("enabled", True),
+                            subdir=p.get("subdir", "Memory")
+                        )
+                        for p in export_points_data
+                    ]
+                else:
+                    export_points = list(self.export_points)
+
+                # 解析结果判断配置
+                rc_data = case_data.get("result_check", None)
+                if rc_data is not None:
+                    result_check = ResultCheck(
+                        method=rc_data.get("method", "breakpoint"),
+                        success_label=rc_data.get("success_label", "Right"),
+                        fail_label=rc_data.get("fail_label", "IDLE"),
+                        check_addr=rc_data.get("check_addr", ""),
+                        success_val=rc_data.get("success_val", ""),
+                        fail_val=rc_data.get("fail_val", ""),
+                        expression=rc_data.get("expression", ""),
+                        expected_val=rc_data.get("expected_val", "")
+                    )
+                else:
+                    result_check = ResultCheck(self.result_check)
+
                 cases.append(TestCase(
                     name=case_data.get("name", ""),
                     out=self._resolve_path(case_data.get("out", "")),
                     dat_dir=case_data.get("dat_dir", ""),
                     segments=segments,
+                    export_points=export_points,
+                    result_check=result_check,
                 ))
         return cases
     
@@ -439,7 +564,21 @@ class Config:
                     "segments": [
                         {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
                         for s in c.segments
-                    ]
+                    ],
+                    "export_points": [
+                        {"when": p.when, "enabled": p.enabled, "subdir": p.subdir}
+                        for p in c.export_points
+                    ],
+                    "result_check": {
+                        "method": c.result_check.method,
+                        "success_label": c.result_check.success_label,
+                        "fail_label": c.result_check.fail_label,
+                        "check_addr": c.result_check.check_addr,
+                        "success_val": c.result_check.success_val,
+                        "fail_val": c.result_check.fail_val,
+                        "expression": c.result_check.expression,
+                        "expected_val": c.result_check.expected_val
+                    }
                 }
                 for c in self.cases
             ]
@@ -521,7 +660,25 @@ class Config:
             {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
             for s in self.memory_segments
         ]
-        
+        config_dict["memory_segments"]["export_points"] = [
+            {"when": p.when, "enabled": p.enabled, "subdir": p.subdir}
+            for p in self.export_points
+        ]
+
+        # 更新 test 分组中的 result_check
+        if "test" not in config_dict:
+            config_dict["test"] = {}
+        config_dict["test"]["result_check"] = {
+            "method": self.result_check.method,
+            "success_label": self.result_check.success_label,
+            "fail_label": self.result_check.fail_label,
+            "check_addr": self.result_check.check_addr,
+            "success_val": self.result_check.success_val,
+            "fail_val": self.result_check.fail_val,
+            "expression": self.result_check.expression,
+            "expected_val": self.result_check.expected_val
+        }
+
         # 更新 cases
         if self.cases:
             config_dict["cases"] = [
@@ -532,11 +689,25 @@ class Config:
                     "segments": [
                         {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
                         for s in c.segments
-                    ]
+                    ],
+                    "export_points": [
+                        {"when": p.when, "enabled": p.enabled, "subdir": p.subdir}
+                        for p in c.export_points
+                    ],
+                    "result_check": {
+                        "method": c.result_check.method,
+                        "success_label": c.result_check.success_label,
+                        "fail_label": c.result_check.fail_label,
+                        "check_addr": c.result_check.check_addr,
+                        "success_val": c.result_check.success_val,
+                        "fail_val": c.result_check.fail_val,
+                        "expression": c.result_check.expression,
+                        "expected_val": c.result_check.expected_val
+                    }
                 }
                 for c in self.cases
             ]
-        
+
         # 更新 log 分组
         if "log" not in config_dict:
             config_dict["log"] = {}
