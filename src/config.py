@@ -53,6 +53,9 @@ CONFIG_DEFAULTS = {
     "do_generate": True,
     "do_build": True,
     "do_test": True,
+    "auto_resume": True,
+    "max_retries": 5,
+    "retry_delay": 10,
 }
 
 
@@ -116,6 +119,9 @@ class TestConfig:
     device: str = ""
     cpu: str = ""
     do_test: bool = True
+    auto_resume: bool = True       # 断连后自动重连续测
+    max_retries: int = 5           # 最大重试次数（0=不限制）
+    retry_delay: int = 10          # 重试前等待秒数
 
 
 @dataclass
@@ -355,6 +361,9 @@ class Config:
             device=test.get("device", ""),
             cpu=test.get("cpu", ""),
             do_test=test.get("do_test", CONFIG_DEFAULTS["do_test"]),
+            auto_resume=test.get("auto_resume", CONFIG_DEFAULTS["auto_resume"]),
+            max_retries=test.get("max_retries", CONFIG_DEFAULTS["max_retries"]),
+            retry_delay=test.get("retry_delay", CONFIG_DEFAULTS["retry_delay"]),
         )
     
     def _parse_test_config_legacy(self, raw: Dict) -> TestConfig:
@@ -368,6 +377,9 @@ class Config:
             device=raw.get("device", ""),
             cpu=raw.get("cpu", ""),
             do_test=raw.get("do_test", CONFIG_DEFAULTS["do_test"]),
+            auto_resume=raw.get("auto_resume", CONFIG_DEFAULTS["auto_resume"]),
+            max_retries=raw.get("max_retries", CONFIG_DEFAULTS["max_retries"]),
+            retry_delay=raw.get("retry_delay", CONFIG_DEFAULTS["retry_delay"]),
         )
     
     def _parse_memory_segments_new(self, raw: Dict) -> List[MemorySegment]:

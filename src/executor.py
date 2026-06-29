@@ -66,6 +66,9 @@ class TestExecutor:
         self.result_addr = config.test.result_addr
         self.success_val = config.test.success_val
         self.error_val = config.test.error_val
+        self.auto_resume = config.test.auto_resume
+        self.max_retries = config.test.max_retries
+        self.retry_delay = config.test.retry_delay
         
         self.template_path = Path(__file__).parent.parent / "templates" / "dss_test.js.tmpl"
         # 如果提供了时间戳则使用，否则生成新的（用于断点续测时保持时间戳一致）
@@ -75,6 +78,7 @@ class TestExecutor:
         self.on_case_started: Optional[callable] = None
         self.on_case_finished: Optional[callable] = None
         self.on_hardware_error: Optional[callable] = None  # 硬件连接错误回调
+        self.on_retry: Optional[callable] = None  # 重试回调 (batch_number, retry_count, max_retries)
         self.should_stop: Optional[callable] = None  # 停止检查回调
         
         # 停止标志
@@ -190,15 +194,19 @@ class TestExecutor:
             case_start_times: Dict[str, float] = {}
             
             with open(console_log, "a", encoding="utf-8") as f_out:
-                for i, batch in enumerate(batches, start_batch + 1):
+                batch_index = 0
+                while batch_index < len(batches):
+                    batch = batches[batch_index]
+                    i = start_batch + 1 + batch_index
+
                     # 检查是否请求停止
                     if self._stop_requested or (self.should_stop and self.should_stop()):
                         logger.info("检测到停止请求，终止测试执行")
-                        self._mark_remaining_batches_as_skipped(batches[batches.index(batch):])
+                        self._mark_remaining_batches_as_skipped(batches[batch_index:])
                         break
-                    
+
                     logger.info(f"执行第 {i}/{start_batch + len(batches)} 批 ({len(batch)} 个用例)")
-                    
+
                     # 通知批次中的用例开始
                     logger.info(f"通知批次开始，共 {len(batch)} 个用例")
                     for case in batch:
@@ -214,75 +222,124 @@ class TestExecutor:
                     for case in batch:
                         case_start_times[case["name"]] = time.time()
 
-                    batch_start_time = time.time()
-                    dss_success = self._run_batch(batch, test_config, log_dir, f_out)
-                    batch_end_time = time.time()
-                    logger.info(f"第 {i} 批 DSS 执行完成，成功: {dss_success}")
+                    # 重试循环
+                    retry_count = 0
+                    batch_actually_success = False
+                    while True:
+                        # 检查是否请求停止
+                        if self._stop_requested or (self.should_stop and self.should_stop()):
+                            break
 
-                    # 收集该批次的结果
-                    logger.info(f"收集批次结果并通知完成")
-                    batch_results = self._collect_batch_results(batch)
-                    logger.info(f"批次结果: {len(batch_results)} 个")
+                        batch_start_time = time.time()
+                        dss_success = self._run_batch(batch, test_config, log_dir, f_out)
+                        batch_end_time = time.time()
+                        logger.info(f"第 {i} 批 DSS 执行完成，成功: {dss_success}")
 
-                    # 检查 DSS 日志中是否有连接错误（替代独立硬件检测进程）
-                    connection_lost = self._check_connection_error_in_log(log_dir)
+                        # 收集该批次的结果
+                        logger.info(f"收集批次结果并通知完成")
+                        batch_results = self._collect_batch_results(batch)
+                        logger.info(f"批次结果: {len(batch_results)} 个")
 
-                    # 判断批次是否成功：
-                    # 1. DSS执行成功
-                    # 2. 所有用例都有结果文件
-                    # 3. 日志中无连接错误
-                    batch_actually_success = dss_success and len(batch_results) == len(batch) and not connection_lost
+                        # 检查 DSS 日志中是否有连接错误
+                        connection_lost = self._check_connection_error_in_log(log_dir)
 
-                    # 处理有结果的用例
-                    result_case_names = {r.case_name for r in batch_results}
-                    for result in batch_results:
-                        all_results.append(result)
-                        start_time = case_start_times.get(result.case_name, batch_start_time)
-                        duration = batch_end_time - start_time
-                        logger.info(f"Case finished: {result.case_name} = {result.status}, duration: {duration:.2f}s")
-                        if self.on_case_finished:
-                            try:
-                                self.on_case_finished(result.case_name, result.status, duration)
-                                logger.info(f"已通知用例完成: {result.case_name}")
-                            except Exception as e:
-                                logger.error(f"通知用例完成失败: {result.case_name}, 错误: {e}")
+                        # 判断批次是否成功
+                        batch_actually_success = dss_success and len(batch_results) == len(batch) and not connection_lost
 
-                    # 处理没有结果的用例（执行失败或未生成结果文件）
-                    for case in batch:
-                        if case["name"] not in result_case_names:
-                            if connection_lost:
-                                logger.error(f"用例未生成结果文件（硬件断开）: {case['name']}")
-                                status = "ConnectionLost"
-                            else:
-                                logger.error(f"用例未生成结果文件，标记为失败: {case['name']}")
-                                status = "Failed"
-                            duration = batch_end_time - case_start_times.get(case["name"], batch_start_time)
+                        if batch_actually_success:
+                            # 批次成功，处理结果并跳出重试循环
+                            for result in batch_results:
+                                all_results.append(result)
+                                start_time = case_start_times.get(result.case_name, batch_start_time)
+                                duration = batch_end_time - start_time
+                                logger.info(f"Case finished: {result.case_name} = {result.status}, duration: {duration:.2f}s")
+                                if self.on_case_finished:
+                                    try:
+                                        self.on_case_finished(result.case_name, result.status, duration)
+                                    except Exception as e:
+                                        logger.error(f"通知用例完成失败: {result.case_name}, 错误: {e}")
+                            break
+
+                        # 批次失败
+                        logger.error(f"第 {i} 批执行失败（DSS成功: {dss_success}, 结果数: {len(batch_results)}/{len(batch)}, 连接断开: {connection_lost}）")
+
+                        # 判断是否需要重试
+                        can_retry = connection_lost and self.auto_resume
+                        if can_retry and (self.max_retries == 0 or retry_count < self.max_retries):
+                            retry_count += 1
+                            logger.warning(f"第 {i} 批将在 {self.retry_delay} 秒后第 {retry_count} 次重试...")
+
+                            # 通知重试回调
+                            if self.on_retry:
+                                try:
+                                    self.on_retry(i, retry_count, self.max_retries)
+                                except Exception as e:
+                                    logger.error(f"重试回调失败: {e}")
+
+                            # 等待重试间隔（可被停止请求中断）
+                            for _ in range(self.retry_delay):
+                                if self._stop_requested or (self.should_stop and self.should_stop()):
+                                    break
+                                time.sleep(1)
+                            continue
+
+                        # 不可重试或已达最大重试次数，处理结果并退出
+                        if retry_count > 0:
+                            logger.error(f"第 {i} 批重试 {retry_count} 次后仍然失败，放弃该批次")
+                        else:
+                            logger.error(f"第 {i} 批执行失败，停止后续批次")
+
+                        # 处理有结果的用例
+                        result_case_names = {r.case_name for r in batch_results}
+                        for result in batch_results:
+                            all_results.append(result)
+                            start_time = case_start_times.get(result.case_name, batch_start_time)
+                            duration = batch_end_time - start_time
+                            logger.info(f"Case finished: {result.case_name} = {result.status}, duration: {duration:.2f}s")
                             if self.on_case_finished:
                                 try:
-                                    self.on_case_finished(case["name"], status, duration)
-                                    logger.info(f"已通知用例{status}: {case['name']}")
+                                    self.on_case_finished(result.case_name, result.status, duration)
                                 except Exception as e:
-                                    logger.error(f"通知用例失败失败: {case['name']}, 错误: {e}")
+                                    logger.error(f"通知用例完成失败: {result.case_name}, 错误: {e}")
 
-                    if not batch_actually_success:
-                        logger.error(f"第 {i} 批执行失败（DSS成功: {dss_success}, 结果数: {len(batch_results)}/{len(batch)}, 连接断开: {connection_lost}），停止后续批次")
+                        # 处理没有结果的用例
+                        for case in batch:
+                            if case["name"] not in result_case_names:
+                                if connection_lost:
+                                    logger.error(f"用例未生成结果文件（硬件断开）: {case['name']}")
+                                    status = "ConnectionLost"
+                                else:
+                                    logger.error(f"用例未生成结果文件，标记为失败: {case['name']}")
+                                    status = "Failed"
+                                duration = batch_end_time - case_start_times.get(case["name"], batch_start_time)
+                                if self.on_case_finished:
+                                    try:
+                                        self.on_case_finished(case["name"], status, duration)
+                                    except Exception as e:
+                                        logger.error(f"通知用例失败失败: {case['name']}, 错误: {e}")
 
-                        if connection_lost or not dss_success or (dss_success and len(batch_results) == 0):
-                            if self.on_hardware_error:
-                                try:
-                                    if connection_lost:
-                                        error_msg = f"第 {i} 批执行过程中检测到硬件连接断开"
-                                    elif not dss_success:
-                                        error_msg = f"第 {i} 批DSS执行失败（超时或错误），可能是硬件连接问题"
-                                    else:
-                                        error_msg = f"第 {i} 批执行失败，未生成结果文件"
-                                    self.on_hardware_error(i, error_msg)
-                                except Exception as e:
-                                    logger.error(f"触发硬件错误回调失败: {e}")
+                        # 触发硬件错误回调（通知 GUI）
+                        if self.on_hardware_error:
+                            try:
+                                if connection_lost:
+                                    error_msg = f"第 {i} 批执行过程中检测到硬件连接断开（已重试 {retry_count} 次）" if retry_count > 0 else f"第 {i} 批执行过程中检测到硬件连接断开"
+                                elif not dss_success:
+                                    error_msg = f"第 {i} 批DSS执行失败（超时或错误），可能是硬件连接问题"
+                                else:
+                                    error_msg = f"第 {i} 批执行失败，未生成结果文件"
+                                self.on_hardware_error(i, error_msg)
+                            except Exception as e:
+                                logger.error(f"触发硬件错误回调失败: {e}")
 
                         # 记录后续批次为未执行
-                        self._mark_remaining_batches_as_skipped(batches[batches.index(batch)+1:])
+                        self._mark_remaining_batches_as_skipped(batches[batch_index + 1:])
                         break
+
+                    # 如果批次最终失败且不可重试，退出批次循环
+                    if not batch_actually_success:
+                        break
+
+                    batch_index += 1
             
             # 收集剩余未执行用例的结果（如果有）
             executed_case_names = {r.case_name for r in all_results}

@@ -53,6 +53,7 @@ class PipelineWorker(QThread):
     case_finished = pyqtSignal(str, str, float)  # 用例完成(名称, 状态, 耗时)
     log_message = pyqtSignal(str)  # 日志消息
     hardware_error = pyqtSignal(int, str)  # 硬件连接错误(批次号, 错误信息)
+    retry_attempt = pyqtSignal(int, int, int)  # 重试尝试(批次号, 当前次数, 最大次数)
     finished = pyqtSignal(bool)  # 执行完成(成功/失败)
 
     def __init__(self, config: Config, start_stage: str, start_batch: int = 0, resume_test: bool = False, run_timestamp: Optional[str] = None):
@@ -201,6 +202,9 @@ class PipelineWorker(QThread):
                 "device": self.config.test.device,
                 "cpu": self.config.test.cpu,
                 "do_test": self.config.test.do_test,
+                "auto_resume": self.config.test.auto_resume,
+                "max_retries": self.config.test.max_retries,
+                "retry_delay": self.config.test.retry_delay,
             },
 
             # 内存段配置
@@ -412,42 +416,29 @@ class PipelineWorker(QThread):
             def on_hardware_error(batch_number, error_message):
                 # 触发硬件错误信号
                 self.hardware_error.emit(batch_number, error_message)
-            
+
+            def on_retry(batch_number, retry_count, max_retries):
+                # 触发重试信号
+                self.retry_attempt.emit(batch_number, retry_count, max_retries)
+
             executor.on_case_started = on_case_started
             executor.on_case_finished = on_case_finished
             executor.on_hardware_error = on_hardware_error
+            executor.on_retry = on_retry
 
-            # 优先使用已存在的 full_regr.json，避免覆盖用户修改的配置
-            test_config_path = None
-            existing_config = Path("full_regr.json")
-            
-            if existing_config.exists():
-                test_config_path = str(existing_config)
-                self.log_message.emit(f"使用现有测试配置: {test_config_path}")
-                # 如果配置中没有用例，从测试配置文件中获取用例列表
-                if not config.cases:
-                    import json
-                    with open(test_config_path, "r", encoding="utf-8") as f:
-                        test_config = json.load(f)
-                    case_names = [case["name"] for case in test_config.get("cases", [])]
-                    self._test_total_cases = len(case_names)
-                    if case_names:
-                        self.log_message.emit(f"发现 {len(case_names)} 个用例")
-                        self.case_list_loaded.emit(case_names)
-            else:
-                # 如果不存在 full_regr.json，则生成新的
-                if not config.cases:
-                    self.log_message.emit("从工作空间获取用例列表...")
-                test_config_path = executor.generate_test_config()
-                if test_config_path and Path(test_config_path).exists():
-                    import json
-                    with open(test_config_path, "r", encoding="utf-8") as f:
-                        test_config = json.load(f)
-                    case_names = [case["name"] for case in test_config.get("cases", [])]
-                    self._test_total_cases = len(case_names)
-                    if case_names:
-                        self.log_message.emit(f"发现 {len(case_names)} 个用例")
-                        self.case_list_loaded.emit(case_names)
+            # 每次都重新生成 full_regr.json，确保配置最新
+            if not config.cases:
+                self.log_message.emit("从工作空间获取用例列表...")
+            test_config_path = executor.generate_test_config()
+            if test_config_path and Path(test_config_path).exists():
+                import json
+                with open(test_config_path, "r", encoding="utf-8") as f:
+                    test_config = json.load(f)
+                case_names = [case["name"] for case in test_config.get("cases", [])]
+                self._test_total_cases = len(case_names)
+                if case_names:
+                    self.log_message.emit(f"发现 {len(case_names)} 个用例")
+                    self.case_list_loaded.emit(case_names)
             
             if self._test_total_cases == 0 and config.cases:
                 self._test_total_cases = len(config.cases)

@@ -352,6 +352,7 @@ class ExecutePanel(QWidget):
         self.worker.case_finished.connect(self.on_case_finished)
         self.worker.log_message.connect(self.on_log_message)
         self.worker.hardware_error.connect(self.on_hardware_error)
+        self.worker.retry_attempt.connect(self.on_retry_attempt)
         self.worker.finished.connect(self.on_execution_finished)
         self.worker.start()
     
@@ -445,33 +446,49 @@ class ExecutePanel(QWidget):
             message: 日志消息
         """
         self.log_message.emit(message)
-    
+
+    def on_retry_attempt(self, batch_number: int, retry_count: int, max_retries: int):
+        """
+        重试尝试处理
+
+        Args:
+            batch_number: 重试的批次号
+            retry_count: 当前重试次数
+            max_retries: 最大重试次数（0=不限制）
+        """
+        if max_retries > 0:
+            self.log_message.emit(f"第 {batch_number} 批自动重连中... ({retry_count}/{max_retries})")
+            self.stats_label.setText(f"自动重连中... (第 {batch_number} 批, {retry_count}/{max_retries})")
+        else:
+            self.log_message.emit(f"第 {batch_number} 批自动重连中... (第 {retry_count} 次)")
+            self.stats_label.setText(f"自动重连中... (第 {batch_number} 批, 第 {retry_count} 次)")
+
     def on_hardware_error(self, batch_number: int, error_message: str):
         """
         硬件连接错误处理
-        
+
         Args:
             batch_number: 失败的批次号
             error_message: 错误信息
         """
         self.hardware_error_occurred = True
         self.failed_batch_number = batch_number
-        
-        # 显示硬件错误对话框
+
+        # 如果启用了自动重连且重试已用尽，或未启用自动重连，显示对话框
+        # 此时 executor 已经放弃重试，需要用户手动干预
         should_resume, resume_batch = HardwareErrorDialog.show_error(
             self, batch_number, error_message
         )
-        
+
         if should_resume:
             # 用户选择断点续测
             self.log_message.emit(f"用户选择从第 {resume_batch} 批继续执行")
-            
+
             # 更新断点续测设置
             self.resume_checkbox.setChecked(True)
             self.resume_batch_spin.setValue(resume_batch)
-            
+
             # 自动重新开始执行
-            # 延迟执行，给用户足够时间重新连接硬件
             self.log_message.emit("请在5秒内重新连接硬件...")
             from PyQt5.QtCore import QTimer
             QTimer.singleShot(5000, self.start_execution)

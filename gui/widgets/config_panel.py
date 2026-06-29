@@ -169,6 +169,31 @@ class ConfigPanel(QWidget):
         self.batch_size_spin.setValue(10)
         self.batch_size_spin.valueChanged.connect(self.on_config_modified)
         test_layout.addWidget(self.batch_size_spin, 0, 3)
+
+        # 自动重连
+        self.auto_resume_check = QCheckBox("断连自动重连")
+        self.auto_resume_check.setChecked(True)
+        self.auto_resume_check.setToolTip("硬件断连后自动等待并重连，无需手动干预")
+        self.auto_resume_check.stateChanged.connect(self.on_config_modified)
+        test_layout.addWidget(self.auto_resume_check, 3, 0)
+
+        # 最大重试次数
+        test_layout.addWidget(QLabel("最大重试次数:"), 3, 2)
+        self.max_retries_spin = QSpinBox()
+        self.max_retries_spin.setRange(0, 100)
+        self.max_retries_spin.setValue(5)
+        self.max_retries_spin.setSpecialValueText("不限制")
+        self.max_retries_spin.setToolTip("0 表示不限制重试次数，直到手动停止")
+        self.max_retries_spin.valueChanged.connect(self.on_config_modified)
+        test_layout.addWidget(self.max_retries_spin, 3, 3)
+
+        # 重试间隔
+        test_layout.addWidget(QLabel("重试间隔(秒):"), 4, 0)
+        self.retry_delay_spin = QSpinBox()
+        self.retry_delay_spin.setRange(1, 300)
+        self.retry_delay_spin.setValue(10)
+        self.retry_delay_spin.valueChanged.connect(self.on_config_modified)
+        test_layout.addWidget(self.retry_delay_spin, 4, 1)
         
         # 设备名称
         test_layout.addWidget(QLabel("设备名称:"), 1, 0)
@@ -191,6 +216,9 @@ class ConfigPanel(QWidget):
         self.test_inputs["test_batch_size"] = self.batch_size_spin
         self.test_inputs["device"] = self.device_edit
         self.test_inputs["cpu"] = self.cpu_edit
+        self.test_inputs["auto_resume"] = self.auto_resume_check
+        self.test_inputs["max_retries"] = self.max_retries_spin
+        self.test_inputs["retry_delay"] = self.retry_delay_spin
         
         content_layout.addWidget(test_group)
         
@@ -455,6 +483,9 @@ class ConfigPanel(QWidget):
         self.batch_size_spin.setValue(config.test.test_batch_size)
         self.device_edit.setText(config.test.device)
         self.cpu_edit.setText(config.test.cpu)
+        self.auto_resume_check.setChecked(config.test.auto_resume)
+        self.max_retries_spin.setValue(config.test.max_retries)
+        self.retry_delay_spin.setValue(config.test.retry_delay)
 
         # 加载结果判断配置
         result_check = config.result_check
@@ -531,6 +562,9 @@ class ConfigPanel(QWidget):
             "test_batch_size": self.batch_size_spin.value(),
             "device": self.device_edit.text(),
             "cpu": self.cpu_edit.text(),
+            "auto_resume": self.auto_resume_check.isChecked(),
+            "max_retries": self.max_retries_spin.value(),
+            "retry_delay": self.retry_delay_spin.value(),
             
             # 内存段配置
             "memory_segments": {
