@@ -182,27 +182,8 @@ function checkResultByExpression(testCfg) {
 // ==================== 执行单个测试用例 ====================
 function runTestCase(testCfg) {
     var result = "Error";
-    var startTime = Date.now();
     var timeoutFlag = false;
-
-    // 超时监控线程
-    var watchdog = new java.lang.Thread(function() {
-        while (!timeoutFlag) {
-            java.lang.Thread.sleep(500);
-            if (Date.now() - startTime > testCfg.timeout) {
-                timeoutFlag = true;
-                env.traceWrite(">>> TIMEOUT (" + testCfg.timeout + " ms)");
-                try {
-                    if (session && session.target.isConnected()) {
-                        session.target.halt();
-                    }
-                } catch(e) {}
-                break;
-            }
-        }
-    });
-
-    watchdog.start();
+    var watchdog = null;
 
     try {
         // 1. 加载程序
@@ -270,8 +251,28 @@ function runTestCase(testCfg) {
             exportMemorySegments(testCfg, exportCfg.subdir);
         }
 
-        // 5. 运行程序
+        // 5. 运行程序（超时仅作用于此阶段）
         env.traceWrite(">>> 运行程序...");
+        var runStartTime = Date.now();
+
+        // 超时监控线程 - 仅监控运行阶段
+        watchdog = new java.lang.Thread(function() {
+            while (!timeoutFlag) {
+                java.lang.Thread.sleep(500);
+                if (Date.now() - runStartTime > testCfg.timeout) {
+                    timeoutFlag = true;
+                    env.traceWrite(">>> TIMEOUT (" + testCfg.timeout + " ms)");
+                    try {
+                        if (session && session.target.isConnected()) {
+                            session.target.halt();
+                        }
+                    } catch(e) {}
+                    break;
+                }
+            }
+        });
+        watchdog.start();
+
         session.target.run();
 
         var t0 = java.lang.System.currentTimeMillis();
@@ -281,6 +282,12 @@ function runTestCase(testCfg) {
             if (java.lang.System.currentTimeMillis() - t0 > testCfg.timeout) {
                 throw new Error("Run timeout");
             }
+        }
+
+        // 停止超时监控 - 后续内存导出不受超时限制
+        if (watchdog) {
+            watchdog.interrupt();
+            watchdog = null;
         }
 
         if (timeoutFlag) {
@@ -357,7 +364,9 @@ function runTestCase(testCfg) {
             env.traceWrite(">>> 异常: " + err.message);
         }
     } finally {
-        watchdog.interrupt();
+        if (watchdog) {
+            watchdog.interrupt();
+        }
         session.breakpoint.removeAll();
     }
 
