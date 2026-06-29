@@ -199,7 +199,7 @@ class TestExecutor:
                     
                     logger.info(f"执行第 {i}/{start_batch + len(batches)} 批 ({len(batch)} 个用例)")
                     
-                    # 通知批次中的用例开始（开始时间在硬件检测后记录）
+                    # 通知批次中的用例开始
                     logger.info(f"通知批次开始，共 {len(batch)} 个用例")
                     for case in batch:
                         logger.info(f"通知用例开始: {case['name']}")
@@ -209,44 +209,8 @@ class TestExecutor:
                                 logger.info(f"已通知用例开始: {case['name']}")
                             except Exception as e:
                                 logger.error(f"通知用例开始失败: {case['name']}, 错误: {e}")
-                    
-                    # 批次前检测硬件连接
-                    if not self._check_hardware_connection():
-                        logger.error("=" * 60)
-                        logger.error(f"第 {i} 批执行前检测到硬件连接断开！")
-                        logger.error("=" * 60)
-                        logger.error("请检查以下项目:")
-                        logger.error("  1. XDS100 调试器是否正确连接到电脑")
-                        logger.error("  2. 目标板是否上电")
-                        logger.error("  3. FTDI 驱动是否安装正确")
-                        logger.error("  4. USB 线缆是否正常")
-                        logger.error("=" * 60)
-                        logger.error(f"已执行 {i-1} 个批次，可以从第 {i} 批继续执行")
-                        logger.error(f"命令: python run.py test --start-batch {i-1}")
-                        
-                        # 通知当前批次用例完成（连接断开状态）
-                        for case in batch:
-                            if self.on_case_finished:
-                                self.on_case_finished(case["name"], "ConnectionLost", 0.0)
-                        
-                        # 记录后续批次为未执行（跳过当前批次，从下一个开始）
-                        current_batch_index = batches.index(batch)
-                        if current_batch_index + 1 < len(batches):
-                            self._mark_remaining_batches_as_skipped(batches[current_batch_index + 1:])
-                        
-                        # 触发硬件错误回调
-                        if self.on_hardware_error:
-                            try:
-                                error_msg = f"第 {i} 批执行前检测到硬件连接断开"
-                                self.on_hardware_error(i, error_msg)
-                            except Exception as e:
-                                logger.error(f"触发硬件错误回调失败: {e}")
-                        
-                        break
-                    
-                    logger.info(f"硬件连接正常，开始执行第 {i} 批")
 
-                    # 记录用例开始时间（在硬件检测之后，避免计入硬件检测耗时）
+                    # 记录用例开始时间
                     for case in batch:
                         case_start_times[case["name"]] = time.time()
 
@@ -254,33 +218,25 @@ class TestExecutor:
                     dss_success = self._run_batch(batch, test_config, log_dir, f_out)
                     batch_end_time = time.time()
                     logger.info(f"第 {i} 批 DSS 执行完成，成功: {dss_success}")
-                    
-                    # 批次执行后再次检测硬件连接
-                    # 如果执行前正常但执行后失败，说明执行过程中硬件断开
-                    logger.info(f"开始第 {i} 批执行后硬件连接检测...")
-                    try:
-                        hardware_connected_after = self._check_hardware_connection()
-                        logger.info(f"第 {i} 批执行后硬件连接状态: {'正常' if hardware_connected_after else '断开'}")
-                    except Exception as e:
-                        logger.error(f"第 {i} 批执行后硬件连接检测异常: {e}")
-                        hardware_connected_after = False
-                    
-                    # 立即收集该批次的结果并通知完成
+
+                    # 收集该批次的结果
                     logger.info(f"收集批次结果并通知完成")
                     batch_results = self._collect_batch_results(batch)
                     logger.info(f"批次结果: {len(batch_results)} 个")
-                    
+
+                    # 检查 DSS 日志中是否有连接错误（替代独立硬件检测进程）
+                    connection_lost = self._check_connection_error_in_log(log_dir)
+
                     # 判断批次是否成功：
                     # 1. DSS执行成功
-                    # 2. 有结果文件
-                    # 3. 执行后硬件连接正常（如果执行前正常的话）
-                    batch_actually_success = dss_success and len(batch_results) == len(batch) and hardware_connected_after
-                    
+                    # 2. 所有用例都有结果文件
+                    # 3. 日志中无连接错误
+                    batch_actually_success = dss_success and len(batch_results) == len(batch) and not connection_lost
+
                     # 处理有结果的用例
                     result_case_names = {r.case_name for r in batch_results}
                     for result in batch_results:
                         all_results.append(result)
-                        # 计算耗时
                         start_time = case_start_times.get(result.case_name, batch_start_time)
                         duration = batch_end_time - start_time
                         logger.info(f"Case finished: {result.case_name} = {result.status}, duration: {duration:.2f}s")
@@ -290,12 +246,11 @@ class TestExecutor:
                                 logger.info(f"已通知用例完成: {result.case_name}")
                             except Exception as e:
                                 logger.error(f"通知用例完成失败: {result.case_name}, 错误: {e}")
-                    
+
                     # 处理没有结果的用例（执行失败或未生成结果文件）
                     for case in batch:
                         if case["name"] not in result_case_names:
-                            # 判断是否是硬件断开导致的失败
-                            if not hardware_connected_after:
+                            if connection_lost:
                                 logger.error(f"用例未生成结果文件（硬件断开）: {case['name']}")
                                 status = "ConnectionLost"
                             else:
@@ -308,30 +263,23 @@ class TestExecutor:
                                     logger.info(f"已通知用例{status}: {case['name']}")
                                 except Exception as e:
                                     logger.error(f"通知用例失败失败: {case['name']}, 错误: {e}")
-                    
+
                     if not batch_actually_success:
-                        logger.error(f"第 {i} 批执行失败（DSS成功: {dss_success}, 结果数: {len(batch_results)}/{len(batch)}, 硬件连接: {'正常' if hardware_connected_after else '断开'}），停止后续批次")
-                        
-                        # 检查是否是硬件连接问题导致的执行失败
-                        # 情况1：执行后硬件连接断开
-                        # 情况2：DSS执行失败（包括超时、返回错误码等）
-                        # 情况3：DSS返回成功但没有结果文件
-                        if not hardware_connected_after or not dss_success or (dss_success and len(batch_results) == 0):
-                            logger.error(f"检测到硬件连接中断或执行失败，触发硬件错误回调")
+                        logger.error(f"第 {i} 批执行失败（DSS成功: {dss_success}, 结果数: {len(batch_results)}/{len(batch)}, 连接断开: {connection_lost}），停止后续批次")
+
+                        if connection_lost or not dss_success or (dss_success and len(batch_results) == 0):
                             if self.on_hardware_error:
                                 try:
-                                    if not hardware_connected_after:
+                                    if connection_lost:
                                         error_msg = f"第 {i} 批执行过程中检测到硬件连接断开"
                                     elif not dss_success:
                                         error_msg = f"第 {i} 批DSS执行失败（超时或错误），可能是硬件连接问题"
                                     else:
-                                        error_msg = f"第 {i} 批执行失败，可能是硬件连接中断（未生成结果文件）"
+                                        error_msg = f"第 {i} 批执行失败，未生成结果文件"
                                     self.on_hardware_error(i, error_msg)
                                 except Exception as e:
                                     logger.error(f"触发硬件错误回调失败: {e}")
-                            else:
-                                logger.error(f"on_hardware_error callback is None!")
-                        
+
                         # 记录后续批次为未执行
                         self._mark_remaining_batches_as_skipped(batches[batches.index(batch)+1:])
                         break
