@@ -57,6 +57,7 @@ function initSession() {
         env.traceWrite(">>> 连接成功: " + cfg.global.device + "/" + cfg.global.cpu);
     } catch (connectErr) {
         env.traceWrite(">>> 连接失败: " + connectErr.message);
+        print("CONNECTION_LOST_DETECTED: " + connectErr.message);
         throw new Error("TARGET_CONNECT_FAILED: " + connectErr.message);
     }
 }
@@ -183,6 +184,7 @@ function checkResultByExpression(testCfg) {
 function runTestCase(testCfg) {
     var result = "Error";
     var timeoutFlag = false;
+    var watchdogStopped = false;  // 显式停止标志
     var watchdog = null;
     var startTime = java.lang.System.currentTimeMillis();
 
@@ -254,13 +256,14 @@ function runTestCase(testCfg) {
 
         // 5. 运行程序（超时仅作用于此阶段）
         env.traceWrite(">>> 运行程序...");
-        var runStartTime = Date.now();
+        var runStartTime = java.lang.System.currentTimeMillis();
 
         // 超时监控线程 - 仅监控运行阶段
         watchdog = new java.lang.Thread(function() {
-            while (!timeoutFlag) {
+            while (!timeoutFlag && !watchdogStopped) {
                 java.lang.Thread.sleep(500);
-                if (Date.now() - runStartTime > testCfg.timeout) {
+                if (watchdogStopped) break;  // 再次检查，避免在 sleep 后仍继续
+                if (java.lang.System.currentTimeMillis() - runStartTime > testCfg.timeout) {
                     timeoutFlag = true;
                     env.traceWrite(">>> TIMEOUT (" + testCfg.timeout + " ms)");
                     try {
@@ -286,6 +289,7 @@ function runTestCase(testCfg) {
         }
 
         // 停止超时监控 - 后续内存导出不受超时限制
+        watchdogStopped = true;  // 先设置停止标志
         if (watchdog) {
             watchdog.interrupt();
             watchdog = null;
@@ -363,6 +367,13 @@ function runTestCase(testCfg) {
         if (!timeoutFlag) {
             result = "Exception:" + err.message;
             env.traceWrite(">>> 异常: " + err.message);
+            // 检测连接相关错误，输出到 stdout 供 Python 检测
+            var errMsg = err.message ? err.message.toLowerCase() : "";
+            if (errMsg.indexOf("connect") >= 0 || errMsg.indexOf("emulation") >= 0 ||
+                errMsg.indexOf("ftdi") >= 0 || errMsg.indexOf("xds100") >= 0 ||
+                errMsg.indexOf("target") >= 0 || errMsg.indexOf("halt") >= 0) {
+                print("CONNECTION_LOST_DETECTED: " + err.message);
+            }
         }
     } finally {
         if (watchdog) {

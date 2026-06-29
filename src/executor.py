@@ -435,23 +435,40 @@ class TestExecutor:
     def _collect_batch_results(self, batch: List[Dict]) -> List[TestResult]:
         """
         收集批次中各用例的结果
-        
+
         Args:
             batch: 批次中的用例列表
-            
+
         Returns:
             测试结果列表
         """
+        # 等待文件系统刷新（DSS 进程被杀死后，文件缓冲区可能还没写入磁盘）
+        time.sleep(2)
+
         results = []
         logger.info(f"收集批次结果，批次包含 {len(batch)} 个用例")
-        for case in batch:
-            logger.info(f"收集用例结果: {case['name']}")
-            result = self._read_case_result(case)
-            if result:
-                results.append(result)
-                logger.info(f"成功收集用例结果: {case['name']} = {result.status}")
-            else:
-                logger.info(f"未能收集用例结果: {case['name']}")
+
+        # 最多重试 3 次，每次间隔 1 秒
+        max_collect_retries = 3
+        for retry in range(max_collect_retries):
+            results = []
+            for case in batch:
+                result = self._read_case_result(case)
+                if result:
+                    results.append(result)
+                    logger.info(f"成功收集用例结果: {case['name']} = {result.status}")
+                else:
+                    logger.info(f"未能收集用例结果: {case['name']} (第 {retry+1} 次尝试)")
+
+            # 如果收集到所有结果，提前退出
+            if len(results) == len(batch):
+                break
+
+            # 还有结果未收集到，等待后重试
+            if retry < max_collect_retries - 1:
+                logger.info(f"只收集到 {len(results)}/{len(batch)} 个结果，等待 1 秒后重试...")
+                time.sleep(1)
+
         logger.info(f"批次结果收集完成，共 {len(results)} 个结果")
         return results
     
@@ -735,7 +752,10 @@ print("检测完成");
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
             
-            timeout_seconds = len(batch) * self.timeout / 1000 + 60
+            # 批次超时 = 用例数 × (运行超时 + 内存导出预留时间) + 缓冲时间
+            # 每个用例除了运行时间外，还需要内存导出时间（ZONE7 1MB 约需 30-40 秒）
+            export_time_per_case = 60  # 每个用例预留 60 秒用于内存导出
+            timeout_seconds = len(batch) * (self.timeout / 1000 + export_time_per_case) + 60
             try:
                 return_code = self._current_process.wait(timeout=timeout_seconds)
                 
@@ -760,44 +780,61 @@ print("检测完成");
     def _check_connection_error_in_log(self, log_dir: Path) -> bool:
         """
         检查日志中的连接错误
-        
+
         Args:
             log_dir: 日志目录
-            
+
         Returns:
             是否检测到连接错误
         """
+        connection_error_patterns = [
+            "Error connecting to the target",
+            "emulation failure",
+            "TARGET_CONNECT_FAILED",
+            "FTDI driver functions",
+            "no XDS100 is plugged in",
+            "CONNECTION_LOST_DETECTED",  # DSS 脚本检测到的运行时连接断开
+            "连接失败",  # DSS 脚本中文错误信息
+        ]
+
+        # 检查 console_all.log
         console_log_path = log_dir / "console_all.log"
-        
-        if not console_log_path.exists():
-            return False
-            
+        if console_log_path.exists():
+            try:
+                with open(console_log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                    for pattern in connection_error_patterns:
+                        if pattern in content:
+                            logger.error("=" * 60)
+                            logger.error("检测到硬件连接问题！(console_all.log)")
+                            logger.error("=" * 60)
+                            logger.error("请检查以下项目:")
+                            logger.error("  1. XDS100 调试器是否正确连接到电脑")
+                            logger.error("  2. 目标板是否上电")
+                            logger.error("  3. FTDI 驱动是否安装正确")
+                            logger.error("  4. USB 线缆是否正常")
+                            logger.error("=" * 60)
+                            return True
+            except Exception as e:
+                logger.warning(f"检查 console_all.log 连接错误时出错: {e}")
+
+        # 检查 DSS XML trace 日志文件
         try:
-            with open(console_log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-                # 检查各种连接错误标志
-                connection_error_patterns = [
-                    "Error connecting to the target",
-                    "emulation failure",
-                    "TARGET_CONNECT_FAILED",
-                    "FTDI driver functions",
-                    "no XDS100 is plugged in"
-                ]
-                for pattern in connection_error_patterns:
-                    if pattern in content:
-                        logger.error("=" * 60)
-                        logger.error("检测到硬件连接问题！")
-                        logger.error("=" * 60)
-                        logger.error("请检查以下项目:")
-                        logger.error("  1. XDS100 调试器是否正确连接到电脑")
-                        logger.error("  2. 目标板是否上电")
-                        logger.error("  3. FTDI 驱动是否安装正确")
-                        logger.error("  4. USB 线缆是否正常")
-                        logger.error("=" * 60)
-                        return True
+            for xml_log in log_dir.glob("DSS_Batch_*.xml"):
+                try:
+                    with open(xml_log, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        for pattern in connection_error_patterns:
+                            if pattern in content:
+                                logger.error("=" * 60)
+                                logger.error(f"检测到硬件连接问题！({xml_log.name})")
+                                logger.error("=" * 60)
+                                return True
+                except Exception as e:
+                    logger.warning(f"检查 {xml_log.name} 连接错误时出错: {e}")
         except Exception as e:
-            logger.warning(f"检查连接错误时出错: {e}")
-        
+            logger.warning(f"遍历 DSS 日志文件时出错: {e}")
+
         return False
     
     def _write_case_result(self, case: Dict, status: str):

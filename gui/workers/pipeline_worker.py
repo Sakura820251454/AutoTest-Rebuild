@@ -194,7 +194,7 @@ class PipelineWorker(QThread):
 
             # 测试设置
             "test": {
-                "timeout": self.config.test.test_timeout,
+                "test_timeout": self.config.test.test_timeout,
                 "test_batch_size": self.config.test.test_batch_size,
                 "result_addr": self.config.test.result_addr,
                 "success_val": self.config.test.success_val,
@@ -205,6 +205,16 @@ class PipelineWorker(QThread):
                 "auto_resume": self.config.test.auto_resume,
                 "max_retries": self.config.test.max_retries,
                 "retry_delay": self.config.test.retry_delay,
+                "result_check": {
+                    "method": self.config.result_check.method,
+                    "success_label": self.config.result_check.success_label,
+                    "fail_label": self.config.result_check.fail_label,
+                    "check_addr": self.config.result_check.check_addr,
+                    "success_val": self.config.result_check.success_val,
+                    "fail_val": self.config.result_check.fail_val,
+                    "expression": self.config.result_check.expression,
+                    "expected_val": self.config.result_check.expected_val,
+                },
             },
 
             # 内存段配置
@@ -212,7 +222,11 @@ class PipelineWorker(QThread):
                 "segments": [
                     {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
                     for s in self.config.memory_segments
-                ]
+                ],
+                "export_points": [
+                    {"when": p.when, "enabled": p.enabled, "subdir": p.subdir}
+                    for p in self.config.export_points
+                ],
             },
 
             # 用例配置
