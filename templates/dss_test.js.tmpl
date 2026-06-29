@@ -184,6 +184,7 @@ function runTestCase(testCfg) {
     var result = "Error";
     var timeoutFlag = false;
     var watchdog = null;
+    var startTime = java.lang.System.currentTimeMillis();
 
     try {
         // 1. 加载程序
@@ -370,12 +371,16 @@ function runTestCase(testCfg) {
         session.breakpoint.removeAll();
     }
 
+    // 计算耗时（毫秒）
+    var endTime = java.lang.System.currentTimeMillis();
+    var durationMs = endTime - startTime;
+
     // 写入结果
     var summary = new java.io.FileWriter(testCfg.dat_dir + "/summary.csv", false);
-    summary.write(testCfg.case_name + "," + result + "\n");
+    summary.write(testCfg.case_name + "," + result + "," + durationMs + "\n");
     summary.close();
 
-    env.traceWrite(">>> 结果: " + result);
+    env.traceWrite(">>> 结果: " + result + " (耗时: " + (durationMs / 1000).toFixed(1) + "s)");
     return result;
 }
 

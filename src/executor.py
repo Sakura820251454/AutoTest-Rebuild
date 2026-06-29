@@ -42,6 +42,7 @@ class TestResult:
     status: str
     dat_dir: Optional[Path] = None
     error: Optional[str] = None
+    duration_ms: Optional[int] = None  # DSS 脚本记录的耗时（毫秒）
 
 
 class TestExecutor:
@@ -190,9 +191,6 @@ class TestExecutor:
             console_log = log_dir / "console_all.log"
             all_results: List[TestResult] = []
             
-            # 用例开始时间字典
-            case_start_times: Dict[str, float] = {}
-            
             with open(console_log, "a", encoding="utf-8") as f_out:
                 batch_index = 0
                 while batch_index < len(batches):
@@ -217,10 +215,6 @@ class TestExecutor:
                                 logger.info(f"已通知用例开始: {case['name']}")
                             except Exception as e:
                                 logger.error(f"通知用例开始失败: {case['name']}, 错误: {e}")
-
-                    # 记录用例开始时间
-                    for case in batch:
-                        case_start_times[case["name"]] = time.time()
 
                     # 重试循环
                     retry_count = 0
@@ -250,8 +244,11 @@ class TestExecutor:
                             # 批次成功，处理结果并跳出重试循环
                             for result in batch_results:
                                 all_results.append(result)
-                                start_time = case_start_times.get(result.case_name, batch_start_time)
-                                duration = batch_end_time - start_time
+                                # 使用 DSS 脚本记录的耗时，如果没有则用批次时间估算
+                                if result.duration_ms is not None:
+                                    duration = result.duration_ms / 1000.0
+                                else:
+                                    duration = batch_end_time - batch_start_time
                                 logger.info(f"Case finished: {result.case_name} = {result.status}, duration: {duration:.2f}s")
                                 if self.on_case_finished:
                                     try:
@@ -293,8 +290,11 @@ class TestExecutor:
                         result_case_names = {r.case_name for r in batch_results}
                         for result in batch_results:
                             all_results.append(result)
-                            start_time = case_start_times.get(result.case_name, batch_start_time)
-                            duration = batch_end_time - start_time
+                            # 使用 DSS 脚本记录的耗时，如果没有则用批次时间估算
+                            if result.duration_ms is not None:
+                                duration = result.duration_ms / 1000.0
+                            else:
+                                duration = batch_end_time - batch_start_time
                             logger.info(f"Case finished: {result.case_name} = {result.status}, duration: {duration:.2f}s")
                             if self.on_case_finished:
                                 try:
@@ -311,7 +311,7 @@ class TestExecutor:
                                 else:
                                     logger.error(f"用例未生成结果文件，标记为失败: {case['name']}")
                                     status = "Failed"
-                                duration = batch_end_time - case_start_times.get(case["name"], batch_start_time)
+                                duration = batch_end_time - batch_start_time
                                 if self.on_case_finished:
                                     try:
                                         self.on_case_finished(case["name"], status, duration)
@@ -481,17 +481,19 @@ class TestExecutor:
                 if not content:
                     logger.info(f"结果文件为空: {summary_file}")
                     return None
-                
-                # 解析 CSV 内容
+
+                # 解析 CSV 内容: case_name,status,duration_ms
                 parts = content.split(",")
                 if len(parts) >= 2:
                     case_name = parts[0]
                     status = parts[1]
+                    duration_ms = int(parts[2]) if len(parts) >= 3 else None
                     logger.info(f"用例 {case_name} 结果: {status}")
                     return TestResult(
                         case_name=case_name,
                         status=status,
-                        dat_dir=Path(case["dat_dir"])
+                        dat_dir=Path(case["dat_dir"]),
+                        duration_ms=duration_ms
                     )
         except Exception as e:
             logger.warning(f"读取用例结果失败 {case['name']}: {e}")
