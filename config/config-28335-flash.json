@@ -1,0 +1,143 @@
+{
+  "_comment": "AutoTest 配置文件 - 详细说明请参考 README.md",
+  "paths": {
+    "_comment": "路径配置 - 支持绝对路径和相对路径（相对于配置文件所在目录）",
+    "template_dir": "D:\\AutoTest_rebuild\\1_project_templete\\ccs_insts_test",
+    "source_dir": "D:\\AutoTest_rebuild\\2_source_file",
+    "generate_dir": "D:\\AutoTest_rebuild\\3_generate_project",
+    "result_dir": "D:\\AutoTest_rebuild\\4_result_out",
+    "ccs_workspace": "D:\\AutoTest_rebuild\\3_generate_project"
+  },
+  "tools": {
+    "_comment": "工具路径配置",
+    "ccs_executable": "C:\\ti\\ccs1210\\ccs\\eclipse\\eclipsec.exe",
+    "ccs_dss": "C:\\ti\\ccs1210\\ccs\\ccs_base\\scripting\\bin\\dss.bat",
+    "ccxml": "C:\\Users\\AA\\ti\\CCSTargetConfigurations\\f28335_100v3.ccxml"
+  },
+  "build": {
+    "_comment": "构建配置",
+    "build_config": "Debug",
+    "build_timeout": 600,
+    "max_build_threads": 4,
+    "do_generate": true,
+    "do_build": true
+  },
+  "generation": {
+    "_comment": "工程生成模式: template = 从模板生成, manual = 使用手动配置的工程",
+    "generation_mode": "manual"
+  },
+  "test": {
+    "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果",
+    "test_timeout": 4500,
+    "test_batch_size": 5,
+    "result_addr": "0x2",
+    "success_val": "0xCCCC",
+    "error_val": "0xEEEE",
+    "device": "Texas Instruments XDS100v3 USB Debug Probe_0",
+    "cpu": "C28xx",
+    "do_test": true,
+    "result_check": {
+      "method": "breakpoint",
+      "success_label": "Right",
+      "fail_label": "IDLE",
+      "check_addr": "",
+      "success_val": "",
+      "fail_val": "",
+      "expression": "",
+      "expected_val": ""
+    }
+  },
+  "memory_segments": {
+    "segments": [
+      {
+        "name": "M0",
+        "addr": "0x000000",
+        "len": "0x00400",
+        "width": 15
+      },
+      {
+        "name": "M1",
+        "addr": "0x000400",
+        "len": "0x00400",
+        "width": 15
+      },
+      {
+        "name": "LS0",
+        "addr": "0x008000",
+        "len": "0x01000",
+        "width": 15
+      },
+      {
+        "name": "LS1",
+        "addr": "0x009000",
+        "len": "0x01000",
+        "width": 15
+      },
+      {
+        "name": "LS2",
+        "addr": "0x00A000",
+        "len": "0x02000",
+        "width": 15
+      },
+      {
+        "name": "LS3",
+        "addr": "0x00B000",
+        "len": "0x01000",
+        "width": 15
+      },
+      {
+        "name": "LS4",
+        "addr": "0x00C000",
+        "len": "0x01000",
+        "width": 15
+      },
+      {
+        "name": "LS5",
+        "addr": "0x00D000",
+        "len": "0x01600",
+        "width": 15
+      },
+      {
+        "name": "LS6",
+        "addr": "0x00E600",
+        "len": "0x01600",
+        "width": 15
+      },
+      {
+        "name": "LS7",
+        "addr": "0x00F200",
+        "len": "0x00800",
+        "width": 15
+      },
+      {
+        "name": "FLASH_PG0",
+        "addr": "0x300000",
+        "len": "0x30000",
+        "width": 21
+      },
+      {
+        "name": "FLASHB",
+        "addr": "0x330000",
+        "len": "0x8000",
+        "width": 21
+      },
+      {
+        "name": "FLASHA",
+        "addr": "0x338000",
+        "len": "0x7F80",
+        "width": 21
+      }
+    ],
+    "export_points": [
+      {
+        "when": "after_run",
+        "enabled": true,
+        "subdir": "Memory"
+      }
+    ]
+  },
+  "log": {
+    "_comment": "日志配置",
+    "log_retention_days": 30
+  }
+}

@@ -80,9 +80,10 @@ function exportMemorySegments(testCfg, subdir) {
     for (var i = 0; i < testCfg.segments.length; i++) {
         var seg = testCfg.segments[i];
         var fname = datDir + "/" + seg.name + ".dat";
-        env.traceWrite("    保存: " + seg.name + " -> " + fname);
+        var page = (seg.page !== undefined) ? seg.page : 0;
+        env.traceWrite("    保存: " + seg.name + " -> " + fname + " (page " + page + ")");
         try {
-            session.memory.saveData2(seg.addr, 0, seg.len, fname, seg.width, false);
+            session.memory.saveData2(seg.addr, page, seg.len, fname, seg.width, false);
         } catch (saveErr) {
             env.traceWrite("    警告: 保存失败: " + saveErr.message);
         }
@@ -189,9 +190,42 @@ function runTestCase(testCfg) {
     var startTime = java.lang.System.currentTimeMillis();
 
     try {
-        // 1. 加载程序
+        // 1. 判断是否需要 FLASH 编程（项目名包含 "FLASH"）
+        var needFlashProgram = (testCfg.out.toUpperCase().indexOf("FLASH") >= 0);
+
+        if (needFlashProgram) {
+            env.traceWrite(">>> 检测到 FLASH 项目，配置 FLASH 编程选项...");
+            try {
+                // 设置 FLASH 操作：擦除 → 编程 → 验证
+                session.flash.options.setString("FlashOperations", "Erase, Program, Verify");
+                env.traceWrite(">>> FLASH 操作已配置: Erase, Program, Verify");
+            } catch (flashOptErr) {
+                env.traceWrite(">>> 警告: 配置 FLASH 选项失败: " + flashOptErr.message);
+            }
+        }
+
         env.traceWrite(">>> 加载程序: " + testCfg.out);
         session.memory.loadProgram(testCfg.out);
+
+        // 1.1 如果是 FLASH 项目，验证编程结果
+        if (needFlashProgram) {
+            try {
+                var flashChecksum = session.flash.calculateChecksum();
+                env.traceWrite(">>> FLASH 校验和: " + flashChecksum);
+            } catch (csErr) {
+                env.traceWrite(">>> 警告: FLASH 校验失败: " + csErr.message);
+            }
+
+            // 重启目标，使 PC 重新定位到程序入口（FLASH 项目）
+            env.traceWrite(">>> 重启目标（FLASH 项目需要重启定位到程序入口）...");
+            try {
+                session.target.restart();
+                java.lang.Thread.sleep(200);
+                env.traceWrite(">>> 重启完成");
+            } catch (restartErr) {
+                env.traceWrite(">>> 警告: 重启失败: " + restartErr.message);
+            }
+        }
 
         // 2. 检查加载后的 PC（应该停在 main 入口）
         java.lang.Thread.sleep(100);

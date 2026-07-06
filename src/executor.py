@@ -190,8 +190,14 @@ class TestExecutor:
             
             console_log = log_dir / "console_all.log"
             all_results: List[TestResult] = []
-            
-            with open(console_log, "a", encoding="utf-8") as f_out:
+
+            # 如果文件不存在或为空，先写入 UTF-8 BOM（让记事本正确识别编码）
+            if not console_log.exists() or console_log.stat().st_size == 0:
+                with open(console_log, "wb") as f:
+                    f.write(b'\xef\xbb\xbf')
+
+            # 使用二进制模式追加（DSS Java 进程输出 UTF-8 字节流）
+            with open(console_log, "ab") as f_out:
                 batch_index = 0
                 while batch_index < len(batches):
                     batch = batches[batch_index]
@@ -224,8 +230,12 @@ class TestExecutor:
                         if self._stop_requested or (self.should_stop and self.should_stop()):
                             break
 
+                        # 记录 console_all.log 在批次运行前的位置，只检查新内容
+                        f_out.flush()
+                        console_log_pos = f_out.tell()
+
                         batch_start_time = time.time()
-                        dss_success = self._run_batch(batch, test_config, log_dir, f_out)
+                        dss_success = self._run_batch(batch, test_config, log_dir, f_out, console_log_pos)
                         batch_end_time = time.time()
                         logger.info(f"第 {i} 批 DSS 执行完成，成功: {dss_success}")
 
@@ -234,8 +244,8 @@ class TestExecutor:
                         batch_results = self._collect_batch_results(batch)
                         logger.info(f"批次结果: {len(batch_results)} 个")
 
-                        # 检查 DSS 日志中是否有连接错误
-                        connection_lost = self._check_connection_error_in_log(log_dir)
+                        # 检查 DSS 日志中是否有连接错误（仅检查当前批次的日志）
+                        connection_lost = self._check_connection_error_in_log(log_dir, console_log_pos, batch[0]['name'])
 
                         # 判断批次是否成功
                         batch_actually_success = dss_success and len(batch_results) == len(batch) and not connection_lost
@@ -688,7 +698,7 @@ try {{
 print("检测完成");
 '''
 
-    def _run_batch(self, batch: List[Dict], global_config: Dict, log_dir: Path, log_file) -> bool:
+    def _run_batch(self, batch: List[Dict], global_config: Dict, log_dir: Path, log_file, console_log_pos: int = 0) -> bool:
         """
         执行一批测试用例
         
@@ -761,7 +771,7 @@ print("检测完成");
                 
                 if return_code != 0:
                     logger.warning(f"批次 DSS 执行返回非零码: {return_code}")
-                    if self._check_connection_error_in_log(log_dir):
+                    if self._check_connection_error_in_log(log_dir, console_log_pos, batch[0]['name']):
                         return False
                 
                 return True
@@ -777,12 +787,14 @@ print("检测完成");
             except Exception as e:
                 logger.warning(f"清理临时 JS 文件失败: {e}")
     
-    def _check_connection_error_in_log(self, log_dir: Path) -> bool:
+    def _check_connection_error_in_log(self, log_dir: Path, console_log_from_pos: int = 0, batch_name: str = "") -> bool:
         """
-        检查日志中的连接错误
+        检查日志中的连接错误（仅检查当前批次新增的日志内容）
 
         Args:
             log_dir: 日志目录
+            console_log_from_pos: console_all.log 中开始检查的位置（之前的内容属于旧批次）
+            batch_name: 当前批次第一个用例名，用于定位对应的 XML trace 文件
 
         Returns:
             是否检测到连接错误
@@ -797,43 +809,49 @@ print("检测完成");
             "连接失败",  # DSS 脚本中文错误信息
         ]
 
-        # 检查 console_all.log
+        def _has_connection_error(content: str) -> bool:
+            for pattern in connection_error_patterns:
+                if pattern in content:
+                    return True
+            return False
+
+        # 仅检查 console_all.log 中当前批次新增的内容
         console_log_path = log_dir / "console_all.log"
         if console_log_path.exists():
             try:
-                with open(console_log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                    for pattern in connection_error_patterns:
-                        if pattern in content:
-                            logger.error("=" * 60)
-                            logger.error("检测到硬件连接问题！(console_all.log)")
-                            logger.error("=" * 60)
-                            logger.error("请检查以下项目:")
-                            logger.error("  1. XDS100 调试器是否正确连接到电脑")
-                            logger.error("  2. 目标板是否上电")
-                            logger.error("  3. FTDI 驱动是否安装正确")
-                            logger.error("  4. USB 线缆是否正常")
-                            logger.error("=" * 60)
-                            return True
+                # 使用二进制模式读取，然后用 UTF-8 解码（DSS Java 进程输出 UTF-8）
+                with open(console_log_path, 'rb') as f:
+                    f.seek(console_log_from_pos)
+                    raw_bytes = f.read()
+                    new_content = raw_bytes.decode('utf-8', errors='ignore')
+                    if _has_connection_error(new_content):
+                        logger.error("=" * 60)
+                        logger.error("检测到硬件连接问题！(console_all.log)")
+                        logger.error("=" * 60)
+                        logger.error("请检查以下项目:")
+                        logger.error("  1. XDS100 调试器是否正确连接到电脑")
+                        logger.error("  2. 目标板是否上电")
+                        logger.error("  3. FTDI 驱动是否安装正确")
+                        logger.error("  4. USB 线缆是否正常")
+                        logger.error("=" * 60)
+                        return True
             except Exception as e:
                 logger.warning(f"检查 console_all.log 连接错误时出错: {e}")
 
-        # 检查 DSS XML trace 日志文件
-        try:
-            for xml_log in log_dir.glob("DSS_Batch_*.xml"):
+        # 仅检查当前批次的 DSS XML trace 日志文件（每个批次的 XML 会被覆盖）
+        if batch_name:
+            xml_log = log_dir / f"DSS_Batch_{batch_name}.xml"
+            if xml_log.exists():
                 try:
                     with open(xml_log, 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
-                        for pattern in connection_error_patterns:
-                            if pattern in content:
-                                logger.error("=" * 60)
-                                logger.error(f"检测到硬件连接问题！({xml_log.name})")
-                                logger.error("=" * 60)
-                                return True
+                        if _has_connection_error(content):
+                            logger.error("=" * 60)
+                            logger.error(f"检测到硬件连接问题！({xml_log.name})")
+                            logger.error("=" * 60)
+                            return True
                 except Exception as e:
                     logger.warning(f"检查 {xml_log.name} 连接错误时出错: {e}")
-        except Exception as e:
-            logger.warning(f"遍历 DSS 日志文件时出错: {e}")
 
         return False
     
