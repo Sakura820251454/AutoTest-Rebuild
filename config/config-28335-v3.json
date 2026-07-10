@@ -27,25 +27,15 @@
     "generation_mode": "manual"
   },
   "test": {
-    "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果",
-    "test_timeout": 45000,
+    "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果，以下三个配置项已废弃但保留兼容",
+    "test_timeout": 42000,
     "test_batch_size": 5,
     "result_addr": "0x2",
     "success_val": "0xCCCC",
     "error_val": "0xEEEE",
     "device": "Texas Instruments XDS100v3 USB Debug Probe_0",
     "cpu": "C28xx",
-    "do_test": true,
-    "result_check": {
-      "method": "breakpoint",
-      "success_label": "Right",
-      "fail_label": "IDLE",
-      "check_addr": "",
-      "success_val": "",
-      "fail_val": "",
-      "expression": "",
-      "expected_val": ""
-    }
+    "do_test": true
   },
   "memory_segments": {
     "segments": [
@@ -64,105 +54,80 @@
       {
         "name": "LS0",
         "addr": "0x8000",
-        "len": "0x0800",
+        "len": "0x0400",
         "width": 15
       },
       {
         "name": "LS1",
-        "addr": "0x9000",
-        "len": "0x0800",
+        "addr": "0x8800",
+        "len": "0x0400",
         "width": 15
       },
       {
         "name": "LS2",
-        "addr": "0xa000",
-        "len": "0x0800",
+        "addr": "0x9000",
+        "len": "0x0400",
         "width": 15
       },
       {
         "name": "LS3",
-        "addr": "0xb000",
-        "len": "0x0800",
+        "addr": "0x9800",
+        "len": "0x0400",
         "width": 15
       },
       {
         "name": "LS4",
+        "addr": "0xa000",
+        "len": "0x0400",
+        "width": 15
+      },
+      {
+        "name": "LS5",
+        "addr": "0xa800",
+        "len": "0x0400",
+        "width": 15
+      },
+      {
+        "name": "LS6",
+        "addr": "0xb000",
+        "len": "0x0400",
+        "width": 15
+      },
+      {
+        "name": "LS7",
+        "addr": "0xb800",
+        "len": "0x0400",
+        "width": 15
+      },
+      {
+        "name": "GS0",
         "addr": "0xc000",
         "len": "0x0800",
         "width": 15
       },
       {
-        "name": "LS5",
+        "name": "GS1",
         "addr": "0xd000",
         "len": "0x0800",
         "width": 15
       },
       {
-        "name": "LS6",
+        "name": "GS2",
         "addr": "0xe000",
         "len": "0x0800",
         "width": 15
       },
       {
-        "name": "LS7",
+        "name": "GS3",
         "addr": "0xf000",
         "len": "0x0800",
         "width": 15
       },
       {
-        "name": "FLASHH",
-        "addr": "0x300000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHG",
-        "addr": "0x308000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHF",
-        "addr": "0x310000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHE",
-        "addr": "0x318000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHD",
-        "addr": "0x320000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHC",
-        "addr": "0x328000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHB",
-        "addr": "0x330000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHA",
-        "addr": "0x338000",
-        "len": "0x2000",
-        "width": 21
-      }
-    ],
-    "export_points": [
-      {
-        "when": "after_run",
-        "enabled": true,
-        "subdir": "Memory"
+        "name": "ZONE7",
+        "addr": "0x200000",
+        "len": "0x100000",
+        "width": 8
       }
     ]
   },

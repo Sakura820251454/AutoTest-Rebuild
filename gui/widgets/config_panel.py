@@ -229,12 +229,13 @@ class ConfigPanel(QWidget):
         
         # 内存段表格
         self.memory_table = QTableWidget()
-        self.memory_table.setColumnCount(4)
-        self.memory_table.setHorizontalHeaderLabels(["名称", "起始地址", "长度", "格式ID"])
+        self.memory_table.setColumnCount(5)
+        self.memory_table.setHorizontalHeaderLabels(["名称", "起始地址", "长度", "格式ID", "Page"])
         self.memory_table.setColumnWidth(0, 100)
         self.memory_table.setColumnWidth(1, 120)
         self.memory_table.setColumnWidth(2, 100)
         self.memory_table.setColumnWidth(3, 80)
+        self.memory_table.setColumnWidth(4, 60)
         self.memory_table.setMinimumHeight(300)
         self.memory_table.itemChanged.connect(self.on_config_modified)
         memory_layout.addWidget(self.memory_table)
@@ -273,11 +274,15 @@ class ConfigPanel(QWidget):
         info_text4 = QLabel("- 格式ID：导出数据格式，常用值：")
         info_text4.setWordWrap(True)
         memory_layout.addWidget(info_text4)
-        
-        format_info = QLabel("  7=16位TI十六进制, 8=16位C十六进制, 15=8位无符号整数, 0=32位TI十六进制")
+
+        format_info = QLabel("  7=16位TI十六进制, 8=16位C十六进制, 15=8位无符号整数, 0=32位TI十六进制, 21=TI64bit")
         format_info.setWordWrap(True)
         format_info.setStyleSheet("color: #666;")
         memory_layout.addWidget(format_info)
+
+        info_text5 = QLabel("- Page：内存页，0=程序空间(PAGE 0)，1=数据空间(PAGE 1)")
+        info_text5.setWordWrap(True)
+        memory_layout.addWidget(info_text5)
 
         content_layout.addWidget(memory_group)
 
@@ -503,26 +508,31 @@ class ConfigPanel(QWidget):
         for segment in config.memory_segments:
             row = self.memory_table.rowCount()
             self.memory_table.insertRow(row)
-            
+
             # 名称
             name_item = QTableWidgetItem(segment.name)
             name_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.memory_table.setItem(row, 0, name_item)
-            
+
             # 起始地址
             addr_item = QTableWidgetItem(segment.addr)
             addr_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.memory_table.setItem(row, 1, addr_item)
-            
+
             # 长度
             len_item = QTableWidgetItem(segment.len)
             len_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.memory_table.setItem(row, 2, len_item)
-            
+
             # 位宽
             width_item = QTableWidgetItem(str(segment.width))
             width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.memory_table.setItem(row, 3, width_item)
+
+            # Page
+            page_item = QTableWidgetItem(str(segment.page))
+            page_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            self.memory_table.setItem(row, 4, page_item)
 
         # 加载导出时间点配置
         export_points = config.export_points if config.export_points else DEFAULT_EXPORT_POINTS
@@ -579,13 +589,15 @@ class ConfigPanel(QWidget):
             addr_item = self.memory_table.item(row, 1)
             len_item = self.memory_table.item(row, 2)
             width_item = self.memory_table.item(row, 3)
+            page_item = self.memory_table.item(row, 4)
 
             if name_item and addr_item and len_item and width_item:
                 segment = {
                     "name": name_item.text(),
                     "addr": addr_item.text(),
                     "len": len_item.text(),
-                    "width": int(width_item.text())
+                    "width": int(width_item.text()),
+                    "page": int(page_item.text()) if page_item else 0
                 }
                 config_dict["memory_segments"]["segments"].append(segment)
 
@@ -665,7 +677,13 @@ class ConfigPanel(QWidget):
             if not isinstance(width, int) or width < 0:
                 QMessageBox.warning(self, "验证失败", f"内存段 {i+1} 的格式ID必须是非负整数")
                 return False
-        
+
+            # 验证Page
+            page = segment.get("page", 0)
+            if not isinstance(page, int) or page not in (0, 1):
+                QMessageBox.warning(self, "验证失败", f"内存段 {i+1} 的Page必须是0或1")
+                return False
+
         return True
 
     def on_result_method_changed(self, method: str):
@@ -720,24 +738,28 @@ class ConfigPanel(QWidget):
         """添加内存段"""
         row = self.memory_table.rowCount()
         self.memory_table.insertRow(row)
-        
+
         # 默认值
         name_item = QTableWidgetItem(f"Segment{row+1}")
         name_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         self.memory_table.setItem(row, 0, name_item)
-        
+
         addr_item = QTableWidgetItem("0x0000")
         addr_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         self.memory_table.setItem(row, 1, addr_item)
-        
+
         len_item = QTableWidgetItem("0x200")
         len_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         self.memory_table.setItem(row, 2, len_item)
-        
+
         width_item = QTableWidgetItem("15")
         width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         self.memory_table.setItem(row, 3, width_item)
-        
+
+        page_item = QTableWidgetItem("0")
+        page_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+        self.memory_table.setItem(row, 4, page_item)
+
         self.config_changed.emit()
     
     def on_remove_memory_segment(self):
@@ -801,22 +823,26 @@ class ConfigPanel(QWidget):
             for segment in default_segments:
                 row = self.memory_table.rowCount()
                 self.memory_table.insertRow(row)
-                
+
                 name_item = QTableWidgetItem(segment["name"])
                 name_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.memory_table.setItem(row, 0, name_item)
-                
+
                 addr_item = QTableWidgetItem(segment["addr"])
                 addr_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.memory_table.setItem(row, 1, addr_item)
-                
+
                 len_item = QTableWidgetItem(segment["len"])
                 len_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.memory_table.setItem(row, 2, len_item)
-                
+
                 width_item = QTableWidgetItem(str(segment["width"]))
                 width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.memory_table.setItem(row, 3, width_item)
+
+                page_item = QTableWidgetItem("0")
+                page_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                self.memory_table.setItem(row, 4, page_item)
 
             # 恢复默认导出时间点配置
             self.export_when_combo.setCurrentText("after_run")

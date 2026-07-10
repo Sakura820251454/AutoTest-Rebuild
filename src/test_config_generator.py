@@ -86,7 +86,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
             "out": str(case.out).replace("\\", "/"),
             "dat_dir": dat_dir,
             "segments": [
-                {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
+                {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
                 for s in (case.segments if case.segments else config.memory_segments)
             ],
             "export_points": export_points,
@@ -165,7 +165,7 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
             "out": str(out_file.resolve()).replace("\\", "/"),
             "dat_dir": dat_dir,
             "segments": [
-                {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
+                {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
                 for s in config.memory_segments
             ],
             "export_points": export_points,

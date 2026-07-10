@@ -131,6 +131,7 @@ class MemorySegment:
     addr: str
     len: str
     width: int = 15
+    page: int = 0  # 内存页：0=程序空间, 1=数据空间
 
 
 @dataclass

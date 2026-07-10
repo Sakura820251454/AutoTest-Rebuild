@@ -27,9 +27,9 @@
     "generation_mode": "manual"
   },
   "test": {
-    "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果",
+    "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果，以下三个配置项已废弃但保留兼容",
     "test_timeout": 45000,
-    "test_batch_size": 5,
+    "test_batch_size": 30,
     "result_addr": "0x2",
     "success_val": "0xCCCC",
     "error_val": "0xEEEE",
@@ -108,54 +108,6 @@
         "addr": "0xf000",
         "len": "0x0800",
         "width": 15
-      },
-      {
-        "name": "FLASHH",
-        "addr": "0x300000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHG",
-        "addr": "0x308000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHF",
-        "addr": "0x310000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHE",
-        "addr": "0x318000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHD",
-        "addr": "0x320000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHC",
-        "addr": "0x328000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHB",
-        "addr": "0x330000",
-        "len": "0x2000",
-        "width": 21
-      },
-      {
-        "name": "FLASHA",
-        "addr": "0x338000",
-        "len": "0x2000",
-        "width": 21
       }
     ],
     "export_points": [
