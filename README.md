@@ -42,7 +42,9 @@ d:\AutoTest_rebuild/
 │   ├── builder.py               # 工程构建
 │   ├── executor.py              # 测试执行
 │   ├── pipeline.py              # 流水线管理
-│   └── hardware_detector.py     # 硬件预检测
+│   ├── hardware_detector.py     # 硬件预检测
+│   ├── test_config_generator.py # 测试配置生成
+│   └── report_generator.py      # 测试报告生成
 │
 ├── gui/                         # 图形界面模块
 │   ├── main_window.py           # 主窗口
@@ -65,7 +67,12 @@ d:\AutoTest_rebuild/
 │       └── validators.py        # 输入验证
 │
 ├── config/                      # 配置文件目录
-│   └── config.json              # 主配置文件
+│   ├── config.json              # 主配置文件
+│   ├── config-28335.json        # F28335 RAM 配置
+│   ├── config-28335-flash.json  # F28335 FLASH 配置
+│   ├── config-28335-sram.json   # F28335 SRAM 配置
+│   ├── config-28335-xintf.json  # F28335 XINTF 配置
+│   └── config-test.json         # 测试配置
 │
 ├── templates/                   # 模板文件
 │   └── dss_test.js.tmpl         # DSS 脚本模板
@@ -224,6 +231,24 @@ python run_gui.py --install-deps
 | `error_val`       | 测试失败标志值      | `0xEEEE`     |
 | `device`          | 调试器名称        | -            |
 | `cpu`             | CPU 核名称      | `C28xx_CPU1` |
+| `auto_resume`     | 断连后自动重连续测    | `true`       |
+| `max_retries`     | 最大重试次数（0=不限制） | `5`          |
+| `retry_delay`     | 重试前等待秒数      | `10`         |
+
+### 结果判断配置 (`result_check`)
+
+支持多种测试结果判断方式：
+
+| 字段                | 说明                          | 默认值       |
+| ----------------- | --------------------------- | --------- |
+| `method`          | 判断方式: `breakpoint`/`memory`/`expression` | `breakpoint` |
+| `success_label`   | 成功时停在的标签名（breakpoint方式）      | `Right`   |
+| `fail_label`      | 失败时停在的标签名（breakpoint方式）      | `IDLE`    |
+| `check_addr`      | 要检查的内存地址（memory方式）          | -         |
+| `success_val`     | 成功时的值（memory方式）              | -         |
+| `fail_val`        | 失败时的值（memory方式）              | -         |
+| `expression`      | 要评估的表达式（expression方式）        | -         |
+| `expected_val`    | 期望的值（expression方式）            | -         |
 
 ### 内存段配置 (`memory_segments`)
 
@@ -235,6 +260,17 @@ python run_gui.py --install-deps
 | M1      | 0x0400        | 0x200      | M1 RAM |
 | LS0-LS7 | 0x8000-0xB800 | 0x400 each | LS RAM |
 | GS0-GS3 | 0xC000-0xF000 | 0x800 each | GS RAM |
+| FLASHA-H | 0x338000-0x300000 | 0x2000 each | FLASH |
+
+### 导出时间点配置 (`export_points`)
+
+支持在不同时间点导出内存数据：
+
+| 时间点        | 说明                 |
+| ------------ | ------------------ |
+| `after_load` | 程序烧录后立即导出（检查初始值） |
+| `before_run` | 程序运行前导出            |
+| `after_run`  | 程序运行完成后导出（默认）      |
 
 ***
 
@@ -410,6 +446,17 @@ cat 6_result_dat_logs/2026-03-16-10-30/console_all.log
 ***
 
 ## 版本历史
+
+### v2.2.0 (增强版本)
+
+- 可配置的内存导出时机（after_load/before_run/after_run）
+- 多种结果判断方式（breakpoint/memory/expression）
+- 断连自动重连重试，无需手动干预
+- FLASH 项目支持（自动检测、编程、校验）
+- 测试配置生成模块化（test_config_generator.py）
+- 测试报告生成模块化（report_generator.py）
+- 日志编码优化（UTF-8 BOM）
+- 超时仅作用于程序运行阶段，内存导出不受限制
 
 ### v2.1.0 (GUI版本)
 

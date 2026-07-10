@@ -376,6 +376,8 @@ full_regr.json                   # 完整测试配置
 
 **执行文件**:
 - **核心模块**: `src/executor.py` - `TestExecutor` 类
+- **配置生成**: `src/test_config_generator.py` - `generate_test_config()` 函数
+- **报告生成**: `src/report_generator.py` - `generate_summary_report()` 函数
 - **DSS模板**: `templates/dss_test.js.tmpl`
 - **CLI入口**: `run.py --test`
 - **GUI入口**: 执行面板 → 开始执行（选择"仅测试"）
@@ -391,6 +393,11 @@ full_regr.json                   # 完整测试配置
 - **硬件连接检测**: 批次执行前后检测硬件连接状态
 - **断点续测**: 支持从指定批次继续执行
 - **硬件错误恢复**: 检测到连接中断时弹出恢复对话框
+- **断连自动重连**: 配置 `auto_resume=true` 时自动重试，无需手动干预
+- **可配置重试策略**: `max_retries`（最大重试次数）、`retry_delay`（重试间隔）
+- **多时间点内存导出**: 支持 after_load/before_run/after_run 三个时间点
+- **多种结果判断方式**: breakpoint（断点地址）、memory（内存值）、expression（表达式）
+- **FLASH项目支持**: 自动检测FLASH项目，配置编程选项，使用restart()代替reset()
 
 **处理逻辑**:
 ```
@@ -406,40 +413,54 @@ full_regr.json                   # 完整测试配置
 4. DSS 脚本内部流程:
    a. 连接目标板 (XDS100v3)
    b. 加载 .out 文件
-   c. 复位目标
-   d. 导出内存段到 .dat 文件
-   e. 设置断点 (LAST_CMP)
-   f. 运行程序
-   g. 检查结果地址的值
-   h. 写入 summary.csv
+   c. 根据配置在不同时间点导出内存段
+   d. 设置断点（Right/IDLE 或自定义标签）
+   e. 运行程序
+   f. 检查结果（断点地址/内存值/表达式）
+   g. 写入 summary.csv
+   
+5. 失败重试机制:
+   a. 检测连接错误（CONNECTION_LOST_DETECTED）
+   b. 自动重试（最多 max_retries 次）
+   c. 重试间隔 retry_delay 秒
+   d. 重试耗尽后才弹窗手动干预
 ```
 
 **DSS 脚本核心逻辑**:
 ```javascript
 // templates/dss_test.js.tmpl
 function runTestCase(testCfg) {
-    // 1. 加载程序
+    // 1. 判断是否需要 FLASH 编程
+    var needFlashProgram = (testCfg.out.toUpperCase().indexOf("FLASH") >= 0);
+    
+    // 2. 加载程序
     session.memory.loadProgram(testCfg.out);
     
-    // 2. 复位目标
-    session.target.reset();
-    
-    // 3. 导出内存段
-    for (seg in testCfg.segments) {
-        session.memory.saveData2(seg.addr, 0, seg.len, fname, seg.width, false);
+    // 3. FLASH项目特殊处理
+    if (needFlashProgram) {
+        // 配置FLASH编程选项：擦除 → 编程 → 验证
+        session.flash.options.setString("FlashOperations", "Erase, Program, Verify");
+        // 重启目标，使PC重新定位到程序入口
+        session.target.restart();
     }
     
-    // 4. 设置断点
-    var last_cmp_addr = session.symbol.getAddress("LAST_CMP");
-    session.breakpoint.add("0x" + last_cmp_pc);
+    // 4. 根据配置导出内存段
+    var exportCfg = getExportConfig(testCfg.export_points);
+    if (exportCfg.when === "after_load") {
+        exportMemorySegments(testCfg, exportCfg.subdir);
+    }
     
-    // 5. 运行程序
-    session.target.run();
+    // 5. 设置断点并运行
+    // ...
     
-    // 6. 检查结果
-    var val = session.memory.readData(0, testCfg.result_addr, 16, 1, false)[0];
-    if (val === testCfg.success_val) result = "Success";
-    else if (val === testCfg.error_val) result = "Error";
+    // 6. 检查结果（支持多种方式）
+    if (testCfg.result_check.method === "breakpoint") {
+        result = checkResultByBreakpoint(testCfg, pc);
+    } else if (testCfg.result_check.method === "memory") {
+        result = checkResultByMemory(testCfg);
+    } else if (testCfg.result_check.method === "expression") {
+        result = checkResultByExpression(testCfg);
+    }
     
     // 7. 写入结果
     summary.write(testCfg.case_name + "," + result + "\n");
@@ -487,7 +508,7 @@ d:\AutoTest_rebuild/
 │   ├── driver.asm               # 汇编测试代码
 │   └── ...
 │
-├── 3_generate_project/          # 生成的工程目录
+├── 3_generate_project/          # 生成的工程目录（已从版本控制移除）
 │   ├── test_algorithm_c/        # 【TEMPLATE】生成的C工程
 │   ├── test_driver_asm/         # 【TEMPLATE】生成的汇编工程
 │   └── ...
@@ -496,13 +517,24 @@ d:\AutoTest_rebuild/
 │   ├── test_algorithm_c.out
 │   └── ...
 │
-├── 5_result_dat/                # 测试结果目录
+├── 5_result_dat/                # 测试结果目录（已从版本控制移除）
 │   └── 2026-03-16-10-30/
 │       ├── summary.csv
 │       └── ...
 │
-└── 6_result_dat_logs/           # 日志目录
-    └── ...
+├── 6_result_dat_logs/           # 日志目录（已从版本控制移除）
+│   └── ...
+│
+├── config/                      # 配置文件目录
+│   ├── config.json              # 主配置文件
+│   ├── config-28335.json        # F28335 RAM配置
+│   ├── config-28335-flash.json  # F28335 FLASH配置
+│   ├── config-28335-sram.json   # F28335 SRAM配置
+│   ├── config-28335-xintf.json  # F28335 XINTF配置
+│   └── config-test.json         # 测试配置
+│
+└── templates/                   # 模板文件
+    └── dss_test.js.tmpl         # DSS脚本模板
 ```
 
 ---
@@ -543,11 +575,11 @@ d:\AutoTest_rebuild/
   "_comment": "AutoTest 配置文件 - 支持C/ASM/CPP多种工程类型",
   
   "paths": {
-    "template_dir": "D:/AutoTest_DEMO/1_project_templete/ccs_insts_test",
-    "source_dir": "D:/AutoTest_DEMO/2_source_file",
-    "generate_dir": "D:/AutoTest_DEMO/3_generate_project",
-    "result_dir": "D:/AutoTest_DEMO/4_result_out",
-    "ccs_workspace": "D:/AutoTest_DEMO/3_generate_project"
+    "template_dir": "D:/AutoTest_rebuild/1_project_templete/ccs_insts_test",
+    "source_dir": "D:/AutoTest_rebuild/2_source_file",
+    "generate_dir": "D:/AutoTest_rebuild/3_generate_project",
+    "result_dir": "D:/AutoTest_rebuild/4_result_out",
+    "ccs_workspace": "D:/AutoTest_rebuild/3_generate_project"
   },
   
   "tools": {
@@ -575,7 +607,16 @@ d:\AutoTest_rebuild/
     "success_val": "0xCCCC",
     "error_val": "0xEEEE",
     "device": "Texas Instruments XDS100v3 USB Debug Probe_0",
-    "cpu": "C28xx_CPU1"
+    "cpu": "C28xx_CPU1",
+    "auto_resume": true,
+    "max_retries": 5,
+    "retry_delay": 10
+  },
+  
+  "result_check": {
+    "method": "breakpoint",
+    "success_label": "Right",
+    "fail_label": "IDLE"
   },
   
   "memory_segments": {
@@ -594,6 +635,9 @@ d:\AutoTest_rebuild/
       {"name": "GS1", "addr": "0xd000", "len": "0x800", "width": 15},
       {"name": "GS2", "addr": "0xe000", "len": "0x800", "width": 15},
       {"name": "GS3", "addr": "0xf000", "len": "0x800", "width": 15}
+    ],
+    "export_points": [
+      {"when": "after_run", "enabled": true, "subdir": "Memory"}
     ]
   }
 }
@@ -669,19 +713,23 @@ d:\AutoTest_rebuild/
 | E3003 构建失败 | 代码错误或配置问题 | 查看 logs/ 目录下的详细日志 |
 | E4001 DSS 未找到 | DSS 路径错误 | 检查 ccs_dss 配置 |
 | E4005 测试超时 | 程序死循环或断点未触发 | 检查测试代码，增加 timeout |
+| E4007 DSS 模板不存在 | 模板文件丢失 | 检查 templates/dss_test.js.tmpl |
+| 连接丢失 | USB断开或目标板断电 | 检查硬件连接，启用 auto_resume 自动重连 |
+| FLASH编程失败 | FLASH配置错误 | 检查项目名是否包含"FLASH"，确认FLASH配置 |
 
 ### 日志位置
 
 ```
 logs/YYYY-MM-DD/autotest.log    # 主日志
 logs/YYYY-MM-DD/*.log           # 各模块日志
-6_result_dat_logs/YYYY-MM-DD-HH-MM/console_all.log  # DSS 控制台输出
+6_result_dat_logs/YYYY-MM-DD-HH-MM/console_all.log  # DSS 控制台输出（UTF-8 BOM编码）
 ```
 
 ---
 
 ## 版本说明
 
+- **v2.2.0** (增强版本): 可配置内存导出时机和结果判断方式，断连自动重连重试，FLASH项目支持
 - **v2.1.0** (GUI版本): 图形化界面，硬件预检测，测试断点续测，实时状态显示
 - **v2.0.0** (重构版本): 模块化架构，统一配置，完善日志，支持两种明确的生成模式
 - **v1.0.0** (原始版本): 基础功能实现，仅支持 ASM 文件
@@ -700,3 +748,5 @@ logs/YYYY-MM-DD/*.log           # 各模块日志
 
 *文档生成时间: 2026-03-18*
 *更新说明: 添加GUI入口、硬件预检测流程、断点续测功能*
+*最后更新: 2026-07-10*
+*更新内容: 添加可配置内存导出时机、多种结果判断方式、断连自动重连、FLASH项目支持、新增配置文件*
