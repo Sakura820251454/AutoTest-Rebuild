@@ -157,6 +157,7 @@ class ResultCheck:
     fail_label: str = "IDLE"  # 失败时停在的标签名
     # memory 方式参数
     check_addr: str = ""  # 要检查的内存地址
+    check_width: int = 32  # 读取宽度: 16 或 32 位
     success_val: str = ""  # 成功时的值
     fail_val: str = ""  # 失败时的值
     # expression 方式参数
@@ -451,6 +452,7 @@ class Config:
             success_label=rc_data.get("success_label", "Right"),
             fail_label=rc_data.get("fail_label", "IDLE"),
             check_addr=rc_data.get("check_addr", ""),
+            check_width=rc_data.get("check_width", 32),
             success_val=rc_data.get("success_val", ""),
             fail_val=rc_data.get("fail_val", ""),
             expression=rc_data.get("expression", ""),

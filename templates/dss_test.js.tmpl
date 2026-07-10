@@ -148,15 +148,30 @@ function checkResultByBreakpoint(testCfg, pc) {
 function checkResultByMemory(testCfg) {
     try {
         var addr = parseInt(testCfg.result_check.check_addr, 16);
-        var value = session.memory.readWord(addr);
-        env.traceWrite(">>> 读取内存地址 0x" + testCfg.result_check.check_addr + " = 0x" + value.toString(16));
+        var width = testCfg.result_check.check_width || 32;  // 默认读取32位
 
-        if (value === parseInt(testCfg.result_check.success_val, 16)) {
+        // 根据宽度选择读取方式
+        var value;
+        if (width === 16) {
+            value = session.memory.readWord(addr);
+        } else {
+            // 32位读取：使用readData读取2个16位字并组合
+            var data = session.memory.readData(addr, 0, 2, false);  // page=0, length=2 words
+            value = (data[0] << 16) | data[1];  // 高16位在前
+        }
+
+        var valueHex = formatHexString(value.toString(16), width === 16 ? 4 : 8);
+        env.traceWrite(">>> 读取内存地址 0x" + testCfg.result_check.check_addr + " = 0x" + valueHex + " (" + width + "位)");
+
+        var successVal = parseInt(testCfg.result_check.success_val, 16);
+        var failVal = parseInt(testCfg.result_check.fail_val, 16);
+
+        if (value === successVal) {
             return "Success";
-        } else if (value === parseInt(testCfg.result_check.fail_val, 16)) {
+        } else if (value === failVal) {
             return "Error";
         } else {
-            return "Unknown(0x" + value.toString(16) + ")";
+            return "Unknown(0x" + valueHex + ")";
         }
     } catch (e) {
         env.traceWrite(">>> 读取内存失败: " + e.message);
