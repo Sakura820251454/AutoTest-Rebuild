@@ -156,7 +156,8 @@ function checkResultByMemory(testCfg) {
             value = session.memory.readWord(addr);
         } else {
             // 32位读取：使用readData读取2个16位字并组合
-            var data = session.memory.readData(addr, 0, 2, false);  // page=0, length=2 words
+            // DSS readData 签名: readData(page, address, numValues, signed)
+            var data = session.memory.readData(0, addr, 2, false);  // page=0, addr=地址, length=2 words
             value = (data[0] << 16) | data[1];  // 高16位在前
         }
 
