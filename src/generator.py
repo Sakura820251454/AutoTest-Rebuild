@@ -81,8 +81,9 @@ class ProjectGenerator:
         self.template_dir = config.paths.template_dir
         self.source_dir = config.paths.source_dir
         self.output_dir = config.paths.generate_dir
-        self.template_name = self.template_dir.name if self.template_dir.exists() else ""
-        
+        # 从 .project 文件读取模板工程名（更可靠）
+        self.template_name = self._read_template_name()
+
         # 从配置获取生成模式，默认为模板模式
         # 支持两种配置格式：
         # 新格式: { "generation": { "generation_mode": "manual" } }
@@ -90,6 +91,28 @@ class ProjectGenerator:
         generation_config = config._raw.get("generation", {})
         mode_str = generation_config.get("generation_mode", "template") if isinstance(generation_config, dict) else config._raw.get("generation_mode", "template")
         self.mode = GenerationMode(mode_str)
+
+    def _read_template_name(self) -> str:
+        """从模板工程的 .project 文件读取工程名"""
+        if not self.template_dir.exists():
+            return self.template_dir.name
+
+        project_file = self.template_dir / ".project"
+        if not project_file.exists():
+            return self.template_dir.name
+
+        try:
+            content = project_file.read_text(encoding="utf-8")
+            # 匹配 <name>工程名</name>
+            import re
+            match = re.search(r'<name>([^<]+)</name>', content)
+            if match:
+                return match.group(1)
+        except Exception as e:
+            logger.warning(f"读取模板工程名失败: {e}")
+
+        # 回退到目录名
+        return self.template_dir.name
     
     def validate(self):
         """验证生成环境"""
@@ -291,31 +314,62 @@ class ProjectGenerator:
             )
     
     def _replace_project_name(self, project_dir: Path, new_name: str):
-        """替换工程文件中的工程名"""
-        project_file = project_dir / ".project"
-        cproject_file = project_dir / ".cproject"
-        
-        patterns = [
-            (re.compile(rf'<name>{re.escape(self.template_name)}</name>'),
-             f'<name>{new_name}</name>'),
-            (re.compile(rf'<project>{re.escape(self.template_name)}</project>'),
-             f'<project>{new_name}</project>'),
-            (re.compile(rf'projectName">{re.escape(self.template_name)}</'),
-             f'projectName">{new_name}</'),
-            (re.compile(rf'projectName={re.escape(self.template_name)}'),
-             f'projectName={new_name}'),
+        """替换工程文件中的工程名
+
+        替换所有 CCS 工程配置文件中的模板工程名：
+        - .project: Eclipse 工程描述
+        - .cproject: C/C++ 工程配置
+        - .cdtbuild: CDT 构建配置（包含 artifactName, OUTPUT_FILE, MAP_FILE 等）
+        - .cdtproject: CDT 工程配置
+        """
+        # 需要检查和替换的文件列表
+        config_files = [
+            ".project",
+            ".cproject",
+            ".cdtbuild",
+            ".cdtproject",
         ]
-        
-        for file_path in [project_file, cproject_file]:
+
+        # 替换模式：支持各种工程名引用格式
+        escaped_name = re.escape(self.template_name)
+        patterns = [
+            # XML 标签中的工程名
+            (re.compile(rf'<name>{escaped_name}</name>'),
+             f'<name>{new_name}</name>'),
+            (re.compile(rf'<project>{escaped_name}</project>'),
+             f'<project>{new_name}</project>'),
+            # 属性中的工程名
+            (re.compile(rf'projectName">{escaped_name}</'),
+             f'projectName">{new_name}</'),
+            (re.compile(rf'projectName={escaped_name}'),
+             f'projectName={new_name}'),
+            # artifactName 属性（.cdtbuild 中）
+            (re.compile(rf'artifactName="{escaped_name}"'),
+             f'artifactName="{new_name}"'),
+            # 输出文件名（.cdtbuild 中）
+            (re.compile(rf'"{escaped_name}\.out"'),
+             f'"{new_name}.out"'),
+            (re.compile(rf'"{escaped_name}\.map"'),
+             f'"{new_name}.map"'),
+            # project id 中的工程名前缀（.cdtbuild 中）
+            (re.compile(rf'{escaped_name}\.com\.ti'),
+             f'{new_name}.com.ti'),
+        ]
+
+        for file_name in config_files:
+            file_path = project_dir / file_name
             if not file_path.exists():
                 continue
-            
-            content = file_path.read_text(encoding="utf-8")
-            original = content
-            
-            for pattern, replacement in patterns:
-                content = pattern.sub(replacement, content)
-            
-            if content != original:
-                file_path.write_text(content, encoding="utf-8")
-                logger.debug(f"    已更新: {file_path.name}")
+
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                original = content
+
+                for pattern, replacement in patterns:
+                    content = pattern.sub(replacement, content)
+
+                if content != original:
+                    file_path.write_text(content, encoding="utf-8")
+                    logger.debug(f"    已更新: {file_name}")
+            except Exception as e:
+                logger.warning(f"    替换 {file_name} 失败: {e}")

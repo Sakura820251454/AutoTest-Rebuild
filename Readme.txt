@@ -100,6 +100,35 @@ Flash 项目配置说明：
 - 半选状态 = 自动判断（默认）
 
 
+模板工程生成流程说明：
+配置文件中设置 “generation_mode”: “template” 启用模板生成模式。
+
+流程步骤：
+1. 准备模板工程（1_project_templete 目录）
+   - 包含完整的 CCS 工程结构（.project, .cproject, .cdtbuild 等）
+   - 删除或保留需要的源文件
+
+2. 准备源文件（2_source_file 目录）
+   - 放置 .asm, .c, .cpp, .s 等源文件
+   - 每个源文件将生成一个独立的测试工程
+
+3. 自动生成过程
+   - 从模板工程复制整个目录到 3_generate_project
+   - 复制源文件到新工程目录
+   - 自动替换所有配置文件中的工程名：
+     * .project, .cproject, .cdtbuild, .cdtproject
+     * artifactName, OUTPUT_FILE, MAP_FILE 等
+   - 模板工程名从 .project 文件自动读取（更可靠）
+
+4. 编译工程
+   - 自动导入工程到 CCS workspace
+   - 并行编译所有工程
+   - 复制 .out 文件到 4_result_out 目录
+
+5. 运行测试
+   - 读取 .out 文件进行测试
+   - 导出内存数据并判断结果
+
 
 2. 运行run.bat文件
 
