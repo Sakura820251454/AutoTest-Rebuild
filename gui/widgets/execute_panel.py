@@ -14,8 +14,9 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QProgressBar, QGroupBox,
     QRadioButton, QButtonGroup, QMessageBox, QTextEdit,
-    QCheckBox, QSpinBox
+    QCheckBox
 )
+from .no_scroll_spinbox import NoScrollSpinBox as QSpinBox
 from PyQt5.QtCore import Qt, pyqtSignal
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

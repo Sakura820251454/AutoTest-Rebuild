@@ -12,10 +12,11 @@ from typing import Optional, Dict, Any, List
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QLineEdit, QComboBox, QSpinBox, QPushButton,
+    QLabel, QLineEdit, QPushButton,
     QGroupBox, QScrollArea, QFrame, QMessageBox, QTableWidget, QTableWidgetItem,
     QCheckBox
 )
+from .no_scroll_spinbox import NoScrollSpinBox as QSpinBox, NoScrollComboBox as QComboBox
 from PyQt5.QtCore import Qt, pyqtSignal
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

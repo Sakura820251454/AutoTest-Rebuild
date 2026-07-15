@@ -8,8 +8,9 @@
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
-    QPushButton, QComboBox, QLineEdit, QLabel, QFileDialog
+    QPushButton, QLineEdit, QLabel, QFileDialog
 )
+from .no_scroll_spinbox import NoScrollComboBox as QComboBox
 from PyQt5.QtCore import Qt
 from datetime import datetime
 
