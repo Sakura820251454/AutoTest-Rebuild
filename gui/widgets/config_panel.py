@@ -258,7 +258,22 @@ class ConfigPanel(QWidget):
         memory_group = QGroupBox("内存导出配置")
         memory_layout = QVBoxLayout(memory_group)
         memory_layout.setSpacing(10)
-        
+
+        # Flash 项目选项
+        flash_layout = QHBoxLayout()
+        self.is_flash_checkbox = QCheckBox("Flash 项目（需要 Flash 编程）")
+        self.is_flash_checkbox.setToolTip("勾选表示程序需要烧录到 Flash 运行\n取消勾选表示程序在 RAM 中运行\n未勾选且未取消勾选表示自动判断")
+        self.is_flash_checkbox.setTristate(True)  # 三态：未决定/是/否
+        self.is_flash_checkbox.setCheckState(Qt.PartiallyChecked)  # 默认未决定
+        self.is_flash_checkbox.stateChanged.connect(self.on_config_modified)
+        flash_layout.addWidget(self.is_flash_checkbox)
+
+        flash_info = QLabel("（未决定时将根据工程名和内存地址自动判断）")
+        flash_info.setStyleSheet("color: gray;")
+        flash_layout.addWidget(flash_info)
+        flash_layout.addStretch()
+        memory_layout.addLayout(flash_layout)
+
         # 内存段表格
         self.memory_table = QTableWidget()
         self.memory_table.setColumnCount(5)
@@ -577,6 +592,17 @@ class ConfigPanel(QWidget):
         if export_points:
             self.export_when_combo.setCurrentText(export_points[0].when)
 
+        # 加载 Flash 项目配置（从第一个用例获取，或使用默认值）
+        is_flash = None
+        if config.cases and config.cases[0].is_flash is not None:
+            is_flash = config.cases[0].is_flash
+        if is_flash is True:
+            self.is_flash_checkbox.setCheckState(Qt.Checked)
+        elif is_flash is False:
+            self.is_flash_checkbox.setCheckState(Qt.Unchecked)
+        else:
+            self.is_flash_checkbox.setCheckState(Qt.PartiallyChecked)
+
     def get_config_dict(self) -> Dict[str, Any]:
         """
         从界面获取配置字典
@@ -647,6 +673,14 @@ class ConfigPanel(QWidget):
         config_dict["memory_segments"]["export_points"] = [
             {"when": when, "enabled": True, "subdir": "Memory"}
         ]
+
+        # 收集 Flash 项目配置（三态复选框）
+        check_state = self.is_flash_checkbox.checkState()
+        if check_state == Qt.Checked:
+            config_dict["is_flash"] = True
+        elif check_state == Qt.Unchecked:
+            config_dict["is_flash"] = False
+        # PartiallyChecked 时不设置 is_flash，表示自动判断
 
         # 收集结果判断配置
         config_dict["result_check"] = {

@@ -748,6 +748,7 @@ print("检测完成");
                     "success_val": int(global_config["success_val"], 16),
                     "error_val": int(global_config["error_val"], 16),
                     "dat_dir": str(Path(case["dat_dir"]).resolve()).replace("\\", "/"),
+                    "is_flash": case.get("is_flash"),  # 可选字段，None表示自动判断
                     "segments": [
                         {
                             "name": s["name"],

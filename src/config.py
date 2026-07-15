@@ -182,6 +182,7 @@ class TestCase:
     segments: List[MemorySegment] = field(default_factory=list)
     export_points: List[ExportPoint] = field(default_factory=lambda: list(DEFAULT_EXPORT_POINTS))
     result_check: ResultCheck = field(default_factory=lambda: ResultCheck())
+    is_flash: Optional[bool] = None  # 是否为Flash项目：True=Flash, False=RAM, None=自动判断
 
 
 class Config:
@@ -508,6 +509,9 @@ class Config:
                 else:
                     result_check = ResultCheck(self.result_check)
 
+                # 解析Flash项目标志（可选，None表示自动判断）
+                is_flash = case_data.get("is_flash", None)
+
                 cases.append(TestCase(
                     name=case_data.get("name", ""),
                     out=self._resolve_path(case_data.get("out", "")),
@@ -515,6 +519,7 @@ class Config:
                     segments=segments,
                     export_points=export_points,
                     result_check=result_check,
+                    is_flash=is_flash,
                 ))
         return cases
     
@@ -703,6 +708,7 @@ class Config:
                     "name": c.name,
                     "out": str(c.out),
                     "dat_dir": c.dat_dir,
+                    "is_flash": c.is_flash,  # 可选字段，None表示自动判断
                     "segments": [
                         {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
                         for s in c.segments

@@ -199,6 +199,34 @@ function checkResultByExpression(testCfg) {
     }
 }
 
+// ==================== 判断是否为 Flash 项目 ====================
+function isFlashProject(testCfg) {
+    // 优先使用配置文件中的显式指定
+    if (testCfg.is_flash === true) {
+        return true;
+    } else if (testCfg.is_flash === false) {
+        return false;
+    }
+
+    // 自动判断策略：
+    // 1. 检查工程名是否包含 "FLASH"
+    if (testCfg.out.toUpperCase().indexOf("FLASH") >= 0) {
+        return true;
+    }
+
+    // 2. 检查内存段地址范围（C2000 Flash 通常在 0x3F0000-0x3FFFFF）
+    var flashStartAddr = 0x3F0000;
+    var flashEndAddr = 0x3FFFFF;
+    for (var i = 0; i < testCfg.segments.length; i++) {
+        var segAddr = parseInt(testCfg.segments[i].addr, 16);
+        if (segAddr >= flashStartAddr && segAddr <= flashEndAddr) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // ==================== 执行单个测试用例 ====================
 function runTestCase(testCfg) {
     var result = "Error";
@@ -208,11 +236,13 @@ function runTestCase(testCfg) {
     var startTime = java.lang.System.currentTimeMillis();
 
     try {
-        // 1. 判断是否需要 FLASH 编程（项目名包含 "FLASH"）
-        var needFlashProgram = (testCfg.out.toUpperCase().indexOf("FLASH") >= 0);
+        // 1. 判断是否需要 FLASH 编程
+        var needFlashProgram = isFlashProject(testCfg);
+        env.traceWrite(">>> Flash 项目判断: " + (needFlashProgram ? "是" : "否") +
+            (testCfg.is_flash !== undefined && testCfg.is_flash !== null ? " (配置指定)" : " (自动判断)"));
 
         if (needFlashProgram) {
-            env.traceWrite(">>> 检测到 FLASH 项目，配置 FLASH 编程选项...");
+            env.traceWrite(">>> 配置 FLASH 编程选项...");
             try {
                 // 设置 FLASH 操作：擦除 → 编程 → 验证
                 session.flash.options.setString("FlashOperations", "Erase, Program, Verify");

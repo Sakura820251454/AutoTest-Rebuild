@@ -83,6 +83,23 @@ debugSession.memory.saveData2（0， 0， 20， “data.dat”， 7， false）;
 注意：GUI配置界面中，”导出格式”列已改为下拉框选择，可以直接选择具体的格式名称（如”16-Bit Hex - TI Style”），无需手动输入格式ID。
 
 
+Flash 项目配置说明：
+在配置文件中，可以为每个测试用例添加 “is_flash” 字段来指定是否为 Flash 项目：
+  - “is_flash”: true   - 强制启用 Flash 编程（擦除→编程→验证）
+  - “is_flash”: false  - 强制禁用 Flash 编程（RAM 项目）
+  - 不设置此字段       - 自动判断（根据工程名和内存地址范围）
+
+自动判断策略：
+1. 工程名包含 “FLASH” → Flash 项目
+2. 内存段地址在 0x3F0000-0x3FFFFF 范围 → Flash 项目
+3. 以上都不满足 → RAM 项目
+
+在 GUI 配置界面中，可以通过”Flash 项目”复选框进行三态选择：
+- 勾选 = Flash 项目
+- 未勾选 = RAM 项目
+- 半选状态 = 自动判断（默认）
+
+
 
 2. 运行run.bat文件
 

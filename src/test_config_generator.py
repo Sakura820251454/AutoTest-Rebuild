@@ -82,7 +82,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
             "expected_val": rc.expected_val
         }
 
-        cases.append({
+        case_config = {
             "name": case.name,
             "out": str(case.out).replace("\\", "/"),
             "dat_dir": dat_dir,
@@ -92,7 +92,13 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
             ],
             "export_points": export_points,
             "result_check": result_check
-        })
+        }
+
+        # 添加 is_flash 字段（仅当显式指定时）
+        if case.is_flash is not None:
+            case_config["is_flash"] = case.is_flash
+
+        cases.append(case_config)
 
     test_config = {
         "ccxml": str(config.paths.ccxml).replace("\\", "/"),

@@ -377,6 +377,13 @@ class MainWindow(QMainWindow):
             # 同时更新每个测试用例的 result_check 配置
             for case in self.config.cases:
                 case.result_check = self.config.result_check
+
+        # 更新 Flash 项目配置
+        if "is_flash" in config_dict:
+            is_flash = config_dict["is_flash"]
+            # 更新每个测试用例的 is_flash 配置
+            for case in self.config.cases:
+                case.is_flash = is_flash
     
     def detect_current_stage(self) -> Tuple[str, str]:
         """
