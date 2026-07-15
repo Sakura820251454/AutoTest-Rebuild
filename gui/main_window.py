@@ -367,6 +367,7 @@ class MainWindow(QMainWindow):
                 success_label=rc_data.get("success_label", "Right"),
                 fail_label=rc_data.get("fail_label", "IDLE"),
                 check_addr=rc_data.get("check_addr", ""),
+                check_width=rc_data.get("check_width", 32),
                 success_val=rc_data.get("success_val", ""),
                 fail_val=rc_data.get("fail_val", ""),
                 expression=rc_data.get("expression", ""),

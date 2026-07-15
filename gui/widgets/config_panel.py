@@ -373,19 +373,26 @@ class ConfigPanel(QWidget):
         self.check_addr_edit.textChanged.connect(self.on_config_modified)
         memory_check_layout.addWidget(self.check_addr_edit, 0, 1)
 
-        memory_check_layout.addWidget(QLabel("成功值:"), 1, 0)
+        memory_check_layout.addWidget(QLabel("读取宽度:"), 1, 0)
+        self.check_width_combo = QComboBox()
+        self.check_width_combo.addItems(["32", "16"])
+        self.check_width_combo.setToolTip("内存读取宽度：16位或32位")
+        self.check_width_combo.currentTextChanged.connect(self.on_config_modified)
+        memory_check_layout.addWidget(self.check_width_combo, 1, 1)
+
+        memory_check_layout.addWidget(QLabel("成功值:"), 2, 0)
         self.success_val_edit = QLineEdit()
         self.success_val_edit.setPlaceholderText("0xCCCC")
         self.success_val_edit.setToolTip("内存值等于此值时判定为成功")
         self.success_val_edit.textChanged.connect(self.on_config_modified)
-        memory_check_layout.addWidget(self.success_val_edit, 1, 1)
+        memory_check_layout.addWidget(self.success_val_edit, 2, 1)
 
-        memory_check_layout.addWidget(QLabel("失败值:"), 2, 0)
+        memory_check_layout.addWidget(QLabel("失败值:"), 3, 0)
         self.fail_val_edit = QLineEdit()
         self.fail_val_edit.setPlaceholderText("0xEEEE")
         self.fail_val_edit.setToolTip("内存值等于此值时判定为失败")
         self.fail_val_edit.textChanged.connect(self.on_config_modified)
-        memory_check_layout.addWidget(self.fail_val_edit, 2, 1)
+        memory_check_layout.addWidget(self.fail_val_edit, 3, 1)
 
         memory_check_layout.setColumnStretch(1, 1)
         self.memory_group.setVisible(False)
@@ -498,6 +505,7 @@ class ConfigPanel(QWidget):
         self.success_label_edit.setText(result_check.success_label)
         self.fail_label_edit.setText(result_check.fail_label)
         self.check_addr_edit.setText(result_check.check_addr)
+        self.check_width_combo.setCurrentText(str(result_check.check_width))
         self.success_val_edit.setText(result_check.success_val)
         self.fail_val_edit.setText(result_check.fail_val)
         self.expression_edit.setText(result_check.expression)
@@ -613,6 +621,7 @@ class ConfigPanel(QWidget):
             "success_label": self.success_label_edit.text(),
             "fail_label": self.fail_label_edit.text(),
             "check_addr": self.check_addr_edit.text(),
+            "check_width": int(self.check_width_combo.currentText()),
             "success_val": self.success_val_edit.text(),
             "fail_val": self.fail_val_edit.text(),
             "expression": self.expression_edit.text(),
@@ -852,6 +861,7 @@ class ConfigPanel(QWidget):
             self.success_label_edit.setText("Right")
             self.fail_label_edit.setText("IDLE")
             self.check_addr_edit.clear()
+            self.check_width_combo.setCurrentText("32")
             self.success_val_edit.clear()
             self.fail_val_edit.clear()
             self.expression_edit.clear()
