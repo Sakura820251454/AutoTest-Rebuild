@@ -159,7 +159,8 @@ function checkResultByMemory(testCfg) {
             // DSS readData 签名: readData(page, address, typeSize, numValues, signed)
             // typeSize: 8, 16, 24, 32 位
             var data = session.memory.readData(0, addr, 16, 2, false);  // page=0, addr=地址, typeSize=16位, numValues=2
-            value = (data[0] << 16) | data[1];  // 高16位在前
+            // data[0]是低地址(低16位)，data[1]是高地址(高16位)
+            value = (data[1] << 16) | data[0];  // 小端序：低16位在前
         }
 
         var valueHex = formatHexString(value.toString(16), width === 16 ? 4 : 8);
