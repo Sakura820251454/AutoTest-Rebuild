@@ -24,6 +24,37 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.config import Config, ExportPoint, DEFAULT_EXPORT_POINTS
 from .path_selector import PathSelector
 
+# 内存导出格式ID映射表
+EXPORT_FORMAT_MAP = {
+    0: "32-Bit Hex - TI Style",
+    1: "32-Bit Hex - C Style",
+    2: "32-Bit Signed Integer",
+    3: "32-Bit Unsigned Integer",
+    4: "32-Bit Binary",
+    5: "32-Bit Floating Point",
+    6: "32-Bit Exponential Float",
+    7: "16-Bit Hex - TI Style",
+    8: "16-Bit Hex - C Style",
+    9: "16-Bit Signed Integer",
+    10: "16-Bit Unsigned Integer",
+    11: "16-Bit Binary",
+    12: "8-Bit Hex - TI Style",
+    13: "8-Bit Hex - C Style",
+    14: "8-Bit Signed Integer",
+    15: "8-Bit Unsigned Integer",
+    16: "8-Bit Binary",
+    17: "Character",
+    18: "64-Bit Hex - TI Style",
+    19: "64-Bit Hex - C Style",
+    20: "64-Bit Signed Integer",
+    21: "64-Bit Unsigned Integer",
+    22: "64-Bit Floating Point",
+    23: "64-Bit Exponential Float",
+}
+
+# 反向映射：从格式名称到ID
+EXPORT_FORMAT_NAME_TO_ID = {v: k for k, v in EXPORT_FORMAT_MAP.items()}
+
 
 class ConfigPanel(QWidget):
     """配置面板"""
@@ -231,11 +262,11 @@ class ConfigPanel(QWidget):
         # 内存段表格
         self.memory_table = QTableWidget()
         self.memory_table.setColumnCount(5)
-        self.memory_table.setHorizontalHeaderLabels(["名称", "起始地址", "长度", "格式ID", "Page"])
+        self.memory_table.setHorizontalHeaderLabels(["名称", "起始地址", "长度", "导出格式", "Page"])
         self.memory_table.setColumnWidth(0, 100)
         self.memory_table.setColumnWidth(1, 120)
         self.memory_table.setColumnWidth(2, 100)
-        self.memory_table.setColumnWidth(3, 80)
+        self.memory_table.setColumnWidth(3, 200)
         self.memory_table.setColumnWidth(4, 60)
         self.memory_table.setMinimumHeight(300)
         self.memory_table.itemChanged.connect(self.on_config_modified)
@@ -272,14 +303,9 @@ class ConfigPanel(QWidget):
         info_text3.setWordWrap(True)
         memory_layout.addWidget(info_text3)
         
-        info_text4 = QLabel("- 格式ID：导出数据格式，常用值：")
+        info_text4 = QLabel("- 导出格式：选择内存数据的导出格式（下拉框选择）")
         info_text4.setWordWrap(True)
         memory_layout.addWidget(info_text4)
-
-        format_info = QLabel("  7=16位TI十六进制, 8=16位C十六进制, 15=8位无符号整数, 0=32位TI十六进制, 21=TI64bit")
-        format_info.setWordWrap(True)
-        format_info.setStyleSheet("color: #666;")
-        memory_layout.addWidget(format_info)
 
         info_text5 = QLabel("- Page：内存页，0=程序空间(PAGE 0)，1=数据空间(PAGE 1)")
         info_text5.setWordWrap(True)
@@ -533,10 +559,13 @@ class ConfigPanel(QWidget):
             len_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.memory_table.setItem(row, 2, len_item)
 
-            # 位宽
-            width_item = QTableWidgetItem(str(segment.width))
-            width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            self.memory_table.setItem(row, 3, width_item)
+            # 导出格式（下拉框）
+            format_combo = QComboBox()
+            format_combo.addItems(EXPORT_FORMAT_MAP.values())
+            format_name = EXPORT_FORMAT_MAP.get(segment.width, "8-Bit Unsigned Integer")
+            format_combo.setCurrentText(format_name)
+            format_combo.currentTextChanged.connect(self.on_config_modified)
+            self.memory_table.setCellWidget(row, 3, format_combo)
 
             # Page
             page_item = QTableWidgetItem(str(segment.page))
@@ -597,15 +626,18 @@ class ConfigPanel(QWidget):
             name_item = self.memory_table.item(row, 0)
             addr_item = self.memory_table.item(row, 1)
             len_item = self.memory_table.item(row, 2)
-            width_item = self.memory_table.item(row, 3)
+            format_combo = self.memory_table.cellWidget(row, 3)
             page_item = self.memory_table.item(row, 4)
 
-            if name_item and addr_item and len_item and width_item:
+            if name_item and addr_item and len_item and format_combo:
+                # 从格式名称转换回ID
+                format_name = format_combo.currentText()
+                width = EXPORT_FORMAT_NAME_TO_ID.get(format_name, 15)  # 默认15=8位无符号整数
                 segment = {
                     "name": name_item.text(),
                     "addr": addr_item.text(),
                     "len": len_item.text(),
-                    "width": int(width_item.text()),
+                    "width": width,
                     "page": int(page_item.text()) if page_item else 0
                 }
                 config_dict["memory_segments"]["segments"].append(segment)
@@ -659,7 +691,7 @@ class ConfigPanel(QWidget):
             if not segment.get("name"):
                 QMessageBox.warning(self, "验证失败", f"内存段 {i+1} 缺少名称")
                 return False
-            
+
             # 验证地址格式（十六进制）
             addr = segment.get("addr", "")
             if not addr.startswith("0x"):
@@ -670,7 +702,7 @@ class ConfigPanel(QWidget):
             except ValueError:
                 QMessageBox.warning(self, "验证失败", f"内存段 {i+1} 的起始地址不是有效的十六进制值")
                 return False
-            
+
             # 验证长度格式（十六进制）
             length = segment.get("len", "")
             if not length.startswith("0x"):
@@ -681,11 +713,11 @@ class ConfigPanel(QWidget):
             except ValueError:
                 QMessageBox.warning(self, "验证失败", f"内存段 {i+1} 的长度不是有效的十六进制值")
                 return False
-            
-            # 验证格式ID
-            width = segment.get("width", 0)
-            if not isinstance(width, int) or width < 0:
-                QMessageBox.warning(self, "验证失败", f"内存段 {i+1} 的格式ID必须是非负整数")
+
+            # 验证导出格式
+            width = segment.get("width", 15)
+            if not isinstance(width, int) or width not in EXPORT_FORMAT_MAP:
+                QMessageBox.warning(self, "验证失败", f"内存段 {i+1} 的导出格式无效")
                 return False
 
             # 验证Page
@@ -762,9 +794,12 @@ class ConfigPanel(QWidget):
         len_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         self.memory_table.setItem(row, 2, len_item)
 
-        width_item = QTableWidgetItem("15")
-        width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-        self.memory_table.setItem(row, 3, width_item)
+        # 导出格式（下拉框）
+        format_combo = QComboBox()
+        format_combo.addItems(EXPORT_FORMAT_MAP.values())
+        format_combo.setCurrentText("8-Bit Unsigned Integer")  # 默认格式
+        format_combo.currentTextChanged.connect(self.on_config_modified)
+        self.memory_table.setCellWidget(row, 3, format_combo)
 
         page_item = QTableWidgetItem("0")
         page_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
@@ -829,7 +864,7 @@ class ConfigPanel(QWidget):
                 {"name": "GS2", "addr": "0xe000", "len": "0x800", "width": 15},
                 {"name": "GS3", "addr": "0xf000", "len": "0x800", "width": 15}
             ]
-            
+
             for segment in default_segments:
                 row = self.memory_table.rowCount()
                 self.memory_table.insertRow(row)
@@ -846,9 +881,13 @@ class ConfigPanel(QWidget):
                 len_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.memory_table.setItem(row, 2, len_item)
 
-                width_item = QTableWidgetItem(str(segment["width"]))
-                width_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-                self.memory_table.setItem(row, 3, width_item)
+                # 导出格式（下拉框）
+                format_combo = QComboBox()
+                format_combo.addItems(EXPORT_FORMAT_MAP.values())
+                format_name = EXPORT_FORMAT_MAP.get(segment["width"], "8-Bit Unsigned Integer")
+                format_combo.setCurrentText(format_name)
+                format_combo.currentTextChanged.connect(self.on_config_modified)
+                self.memory_table.setCellWidget(row, 3, format_combo)
 
                 page_item = QTableWidgetItem("0")
                 page_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
