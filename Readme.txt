@@ -89,6 +89,8 @@ usage：
 因此，如果我想将内存从地址0x0保存为 dat 格式，其中包含 20 条 TI 16 位十六进制格式的记录，我会执行以下作：
 debugSession.memory.saveData2（0， 0， 20， “data.dat”， 7， false）;
 
+注意：GUI配置界面中，”导出格式”列已改为下拉框选择，可以直接选择具体的格式名称（如”16-Bit Hex - TI Style”），无需手动输入格式ID。
+
 
 
 2. 运行run.bat文件
