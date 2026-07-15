@@ -137,3 +137,8 @@ Thumbs.db
 *.temp
 *.lck
 undefined
+
+# ================================
+# Auto-generated test config
+# ================================
+full_regr.json
