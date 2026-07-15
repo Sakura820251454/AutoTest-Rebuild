@@ -85,6 +85,16 @@ class TestExecutor:
         # 停止标志
         self._stop_requested = False
         self._current_process: Optional[subprocess.Popen] = None
+
+        # DSS Java 进程环境变量
+        self._dss_env = os.environ.copy()
+        # DSS 的 print() 输出编码为 UTF-8
+
+        # 直接调用 eclipsec.exe，绕过 dss.bat 和 cmd.exe，避免中文乱码
+        # dss.bat 路径: C:/ti/ccs1210/ccs/ccs_base/scripting/bin/dss.bat
+        # eclipsec.exe 路径: C:/ti/ccs1210/ccs/eclipse/eclipsec.exe
+        self._eclipsec_exe = self.dss_exe.parent / ".." / ".." / ".." / "eclipse" / "eclipsec.exe"
+        self._eclipsec_exe = self._eclipsec_exe.resolve()
     
     def validate(self):
         """验证测试环境"""
@@ -191,7 +201,8 @@ class TestExecutor:
             console_log = log_dir / "console_all.log"
             all_results: List[TestResult] = []
 
-            # 如果文件不存在或为空，先写入 UTF-8 BOM（让记事本正确识别编码）
+            # DSS Java 进程的 System.out.println 使用 UTF-8 编码
+            # 先写入 UTF-8 BOM（让记事本正确识别编码）
             if not console_log.exists() or console_log.stat().st_size == 0:
                 with open(console_log, "wb") as f:
                     f.write(b'\xef\xbb\xbf')
@@ -574,17 +585,25 @@ class TestExecutor:
                 js_file = f.name
             
             try:
-                cmd = [str(self.dss_exe), js_file]
+                # 直接调用 eclipsec.exe，绕过 dss.bat 和 cmd.exe，避免中文乱码
+                cmd = [
+                    str(self._eclipsec_exe),
+                    "-nosplash",
+                    "-application", "com.ti.ccstudio.apps.runScript",
+                    "-product", "com.ti.ccstudio.branding.product",
+                    "-dss.rhinoArgs", js_file
+                ]
                 logger.info(f"执行 DSS 硬件检测命令: {' '.join(cmd)}")
                 result = subprocess.run(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     timeout=30,  # 增加超时时间到30秒
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    env=self._dss_env
                 )
                 
-                # 检查输出中是否包含成功标志
+                # 检查输出中是否包含成功标志（DSS 输出为 UTF-8 编码）
                 output = result.stdout.decode('utf-8', errors='ignore')
                 stderr_output = result.stderr.decode('utf-8', errors='ignore')
                 
@@ -752,14 +771,22 @@ print("检测完成");
             js_file = f.name
         
         try:
-            cmd = [str(self.dss_exe), js_file]
+            # 直接调用 eclipsec.exe，绕过 dss.bat 和 cmd.exe，避免中文乱码
+            cmd = [
+                str(self._eclipsec_exe),
+                "-nosplash",
+                "-application", "com.ti.ccstudio.apps.runScript",
+                "-product", "com.ti.ccstudio.branding.product",
+                "-dss.rhinoArgs", js_file
+            ]
             logger.info(f"执行 DSS 命令: {' '.join(cmd)}")
-            
+
             self._current_process = subprocess.Popen(
                 cmd,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                env=self._dss_env
             )
             
             # 批次超时 = 用例数 × (运行超时 + 内存导出预留时间) + 缓冲时间

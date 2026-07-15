@@ -160,8 +160,8 @@ try {{
 }}
 '''
         
-        # 创建临时文件
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as f:
+        # 创建临时文件（必须用 UTF-8 编码，DSS/Rhino 默认用 UTF-8 读取 JS 文件）
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False, encoding='utf-8') as f:
             f.write(script_content)
             return f.name
     
@@ -176,54 +176,67 @@ try {{
             是否成功
         """
         try:
-            # 构建命令
-            dss_path = self.config.paths.ccs_dss
-            
-            if not dss_path.exists():
-                self.log_message.emit(f"错误: DSS 执行器不存在: {dss_path}")
+            # 构建命令：直接调用 eclipsec.exe，绕过 dss.bat 和 cmd.exe，避免中文乱码
+            # dss.bat 路径: C:/ti/ccs1210/ccs/ccs_base/scripting/bin/dss.bat
+            # eclipsec.exe 路径: C:/ti/ccs1210/ccs/eclipse/eclipsec.exe
+            dss_bat = self.config.paths.ccs_dss
+            if not dss_bat.exists():
+                self.log_message.emit(f"错误: DSS 执行器不存在: {dss_bat}")
                 return False
-            
-            cmd = [str(dss_path), script_path]
-            
+
+            # 从 dss.bat 路径推导 eclipsec.exe 路径
+            dss_dir = dss_bat.parent  # scripting/bin
+            eclipsec_path = dss_dir / ".." / ".." / ".." / "eclipse" / "eclipsec.exe"
+            eclipsec_path = eclipsec_path.resolve()
+
+            if not eclipsec_path.exists():
+                self.log_message.emit(f"错误: eclipsec.exe 不存在: {eclipsec_path}")
+                return False
+
+            # eclipsec.exe 启动参数（与 dss.bat 中一致）
+            cmd = [
+                str(eclipsec_path),
+                "-nosplash",
+                "-application", "com.ti.ccstudio.apps.runScript",
+                "-product", "com.ti.ccstudio.branding.product",
+                "-dss.rhinoArgs", script_path
+            ]
+
             self.log_message.emit(f"执行命令: {' '.join(cmd)}")
-            
-            # 执行脚本
-            process = subprocess.Popen(
+
+            # DSS Java 进程环境变量
+            dss_env = os.environ.copy()
+
+            # 执行脚本，等待完成后一次性读取输出
+            result = subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                env=dss_env
             )
-            
-            # 实时读取输出
-            while self.is_running:
-                output = process.stdout.readline()
-                if output:
-                    self.log_message.emit(output.strip())
-                    if "SUCCESS" in output:
-                        return True
-                    elif "FAILED" in output:
-                        return False
-                
-                # 检查进程是否结束
-                retcode = process.poll()
-                if retcode is not None:
-                    break
-            
-            # 读取剩余输出
-            stdout, stderr = process.communicate(timeout=5)
-            if stdout:
-                for line in stdout.split('\n'):
-                    if line.strip():
-                        self.log_message.emit(line.strip())
-            
-            if stderr:
-                for line in stderr.split('\n'):
-                    if line.strip():
-                        self.log_message.emit(f"[错误] {line.strip()}")
-            
-            return process.returncode == 0
+
+            # DSS 输出为 UTF-8 编码，一次性读取不会截断
+            if result.stdout:
+                output = result.stdout.decode('utf-8', errors='replace')
+                for line in output.splitlines():
+                    line = line.strip()
+                    if line:
+                        self.log_message.emit(line)
+                        if "SUCCESS" in line:
+                            return True
+                        elif "FAILED" in line:
+                            return False
+
+            if result.stderr:
+                err_output = result.stderr.decode('utf-8', errors='replace')
+                for line in err_output.splitlines():
+                    line = line.strip()
+                    if line:
+                        self.log_message.emit(f"[错误] {line}")
+
+            return result.returncode == 0
             
         except subprocess.TimeoutExpired:
             self.log_message.emit("错误: 检测超时")
