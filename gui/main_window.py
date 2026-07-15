@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
         if config_dict.get("memory_segments"):
             # 更新到 _raw 中，以便保存时能正确写入
             self.config._raw["memory_segments"] = config_dict["memory_segments"]
-            
+
             # 同时更新内存段列表
             from src.config import MemorySegment
             self.config.memory_segments = []
@@ -353,10 +353,29 @@ class MainWindow(QMainWindow):
                     width=segment_data["width"]
                 )
                 self.config.memory_segments.append(segment)
-            
+
             # 同时更新每个测试用例的 segments 配置
             for case in self.config.cases:
                 case.segments = list(self.config.memory_segments)
+
+        # 更新结果判断配置
+        if config_dict.get("result_check"):
+            from src.config import ResultCheck
+            rc_data = config_dict["result_check"]
+            self.config.result_check = ResultCheck(
+                method=rc_data.get("method", "breakpoint"),
+                success_label=rc_data.get("success_label", "Right"),
+                fail_label=rc_data.get("fail_label", "IDLE"),
+                check_addr=rc_data.get("check_addr", ""),
+                success_val=rc_data.get("success_val", ""),
+                fail_val=rc_data.get("fail_val", ""),
+                expression=rc_data.get("expression", ""),
+                expected_val=rc_data.get("expected_val", "")
+            )
+
+            # 同时更新每个测试用例的 result_check 配置
+            for case in self.config.cases:
+                case.result_check = self.config.result_check
     
     def detect_current_stage(self) -> Tuple[str, str]:
         """
