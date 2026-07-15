@@ -52,40 +52,31 @@ usage：
 }
 
 
-如 API 文档中所述，使用 memory.getSupportedTypes（） 确定设备上支持的所有格式的 ID。例如，在 CC26xx 设备上，返回的 ID 为：
-1-8ti
-2-8c
-
-7-16ti
-8-16c
-
-14-32ti
-15-32c
-
-//0 - 32 位十六进制 - TI 样式
-//1 - 32 位十六进制 - C 样式
-//2 - 32 位有符号整数
-//3 - 32 位无符号整数
-//4 - 32 位二进
-//5 - 32 位浮点
-//6 - 32 位指数浮点
-//7 - 16 位十六进制 - TI 样式
-//8 - 16 位十六进制 - C 样式
-//9 - 16 位有符号整数
-//10 - 16 位无符号整数
-//11 - 16 位二进制
-//12 - 8 位十六进制 - TI 样式
-//13 - 8 位十六进制 - C 样式
-//14 - 8 位有符号整数
-//15 - 8 位无符号整数
-//16 - 8 位二进
-//17 - 字符
-//18 - 64 位十六进制 - TI 样式
-//19 - 64 位十六进制 - C 样式
-//20 - 64 位有符号整数
-//21 - 64 位无符号整数
-//22 - 64 位浮点
-//23 - 64 位指数浮点
+CCS 12.1.0 内存导出格式ID映射表：
+0 - 8-Bit Hex - TI Style
+1 - 8-Bit Hex - C Style
+2 - 8-Bit Signed Integer
+3 - 8-Bit Unsigned Integer
+4 - 8-Bit Binary
+5 - Character
+6 - Packed Char
+7 - 16-Bit Hex - C Style
+8 - 16-Bit Hex - TI Style
+9 - 16-Bit Signed Integer
+10 - 16-Bit Unsigned Integer
+11 - 16-Bit Binary
+12 - 32-Bit Signed Integer
+13 - 32-Bit Unsigned Integer
+14 - 32-Bit Hex - C Style
+15 - 32-Bit Hex - TI Style
+16 - 32-Bit Floating Point
+17 - 32-Bit Exponential Float
+18 - 32-Bit IEEE Floating Point
+19 - 32-Bit IEEE Exp'l Float
+20 - 64-Bit Hex - C Style
+21 - 64-Bit Hex - TI Style
+22 - 64-Bit Floating Point
+23 - 64-Bit Exponential Float
 因此，如果我想将内存从地址0x0保存为 dat 格式，其中包含 20 条 TI 16 位十六进制格式的记录，我会执行以下作：
 debugSession.memory.saveData2（0， 0， 20， “data.dat”， 7， false）;
 
