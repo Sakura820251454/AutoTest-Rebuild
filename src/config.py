@@ -666,6 +666,9 @@ class Config:
             "device": self.test.device,
             "cpu": self.test.cpu,
             "do_test": self.test.do_test,
+            "auto_resume": self.test.auto_resume,
+            "max_retries": self.test.max_retries,
+            "retry_delay": self.test.retry_delay,
         })
         
         # 更新 generation 分组

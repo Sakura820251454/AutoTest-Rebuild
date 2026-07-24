@@ -336,6 +336,12 @@ class MainWindow(QMainWindow):
             self.config.test.device = config_dict["device"]
         if config_dict.get("cpu"):
             self.config.test.cpu = config_dict["cpu"]
+        if "auto_resume" in config_dict:
+            self.config.test.auto_resume = config_dict["auto_resume"]
+        if "max_retries" in config_dict:
+            self.config.test.max_retries = config_dict["max_retries"]
+        if "retry_delay" in config_dict:
+            self.config.test.retry_delay = config_dict["retry_delay"]
         
         # 更新内存段配置
         if config_dict.get("memory_segments"):
@@ -353,6 +359,22 @@ class MainWindow(QMainWindow):
                     width=segment_data["width"]
                 )
                 self.config.memory_segments.append(segment)
+
+            # 同时更新导出时间点配置
+            from src.config import ExportPoint
+            export_points_data = config_dict["memory_segments"].get("export_points", [])
+            if export_points_data:
+                self.config.export_points = [
+                    ExportPoint(
+                        when=p.get("when", "after_run"),
+                        enabled=p.get("enabled", True),
+                        subdir=p.get("subdir", "Memory")
+                    )
+                    for p in export_points_data
+                ]
+                # 同时更新每个测试用例的 export_points 配置
+                for case in self.config.cases:
+                    case.export_points = list(self.config.export_points)
 
             # 同时更新每个测试用例的 segments 配置
             for case in self.config.cases:
