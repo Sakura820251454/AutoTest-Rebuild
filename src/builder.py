@@ -14,7 +14,6 @@ import shutil
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from .config import Config
@@ -60,6 +59,11 @@ class ProjectBuilder:
         self.build_config = config.build.build_config
         self.timeout = config.build.build_timeout
         self.max_threads = config.build.max_build_threads
+
+        # 回调函数（供 GUI 进度显示）
+        self.on_project_start: Optional[callable] = None  # (project_name: str)
+        self.on_project_finish: Optional[callable] = None  # (project_name: str, success: bool, duration_s: float)
+        self.should_stop: Optional[callable] = None  # 返回 True 时停止构建
     
     def validate(self):
         """验证构建环境"""
@@ -77,28 +81,34 @@ class ProjectBuilder:
     def build_all(self, import_projects: bool = True) -> List[BuildResult]:
         """
         构建所有工程
-        
+
         Args:
-            import_projects: 是否先导入工程
-        
+            import_projects: 是否先清理并导入工程（现已通过 -ccs.autoImport 在构建时自动处理）
+
         Returns:
             构建结果列表
         """
         with LogContext(logger, "工程构建"):
             self.validate()
-            
+
             self.result_dir.mkdir(parents=True, exist_ok=True)
-            
+
             projects = self.find_projects()
             if not projects:
                 logger.warning(f"工作空间中没有找到有效工程: {self.workspace}")
                 return []
-            
+
             logger.info(f"找到 {len(projects)} 个工程")
-            
-            if import_projects:
-                self._import_projects(projects)
-            
+
+            # 清理旧的 .metadata，确保构建时工作空间干净
+            # 不再单独导入工程（importProject 多次调用会触发 Eclipse bug:
+            # "null parent found while sorting trees"），
+            # 改为依靠构建命令的 -ccs.autoImport true 自动导入
+            metadata_dir = self.workspace / ".metadata"
+            if metadata_dir.exists():
+                shutil.rmtree(metadata_dir, ignore_errors=True)
+                logger.debug("  已清理旧的 .metadata 目录")
+
             results = self._build_projects(projects)
             
             success_count = sum(1 for r in results if r.success)
@@ -109,13 +119,19 @@ class ProjectBuilder:
             return results
     
     def _import_projects(self, projects: List[Path]):
-        """导入所有工程到工作空间"""
+        """逐个导入工程到工作空间（导入成功即完成，退出码非零通常为工作空间保存时的 Eclipse 内部 bug"""
         logger.info("开始导入工程...")
-        
+
+        # 清理旧的 .metadata，避免 Eclipse 工作空间元数据累积损坏
+        metadata_dir = self.workspace / ".metadata"
+        if metadata_dir.exists():
+            shutil.rmtree(metadata_dir, ignore_errors=True)
+            logger.debug("  已清理旧的 .metadata 目录")
+
         for i, project_path in enumerate(projects, 1):
             project_name = project_path.name
             logger.info(f"[{i}/{len(projects)}] 导入: {project_name}")
-            
+
             cmd = [
                 str(self.ccs_exe),
                 "-noSplash",
@@ -124,7 +140,7 @@ class ProjectBuilder:
                 "-ccs.location", str(project_path),
                 "-ccs.autoBuild", "false"
             ]
-            
+
             try:
                 result = subprocess.run(
                     cmd,
@@ -133,55 +149,55 @@ class ProjectBuilder:
                     timeout=120,
                     cwd=str(self.workspace)
                 )
-                
+
+                # 退出码非零通常是工作空间保存时的 Eclipse bug
+                # ("null parent found while sorting trees")，工程实际已成功导入
                 if result.returncode != 0:
-                    logger.warning(f"  导入返回非零: {result.returncode}")
+                    logger.warning(f"  导入返回非零: {result.returncode}（工程可能已成功导入）")
                     if result.stderr:
                         logger.debug(f"  stderr: {result.stderr[:500]}")
                 else:
                     logger.debug(f"  导入成功")
-                    
+
             except subprocess.TimeoutExpired:
                 logger.error(f"  导入超时")
             except Exception as e:
                 logger.error(f"  导入异常: {e}")
     
     def _build_projects(self, projects: List[Path]) -> List[BuildResult]:
-        """并行构建所有工程"""
-        logger.info(f"开始并行构建 (线程数: {self.max_threads})...")
-        
+        """串行构建所有工程（Eclipse 工作空间不支持并发访问）"""
+        logger.info(f"开始串行构建 {len(projects)} 个工程...")
+
         results = []
-        
-        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-            futures = {
-                executor.submit(self._build_single, p): p
-                for p in projects
-            }
-            
-            for future in as_completed(futures):
-                project_path = futures[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                    
-                    status = "✓" if result.success else "✗"
-                    logger.info(f"  {status} {result.project_name} ({result.build_time:.1f}s)")
-                    
-                except Exception as e:
-                    logger.exception(f"构建异常: {project_path.name}")
-                    results.append(BuildResult(
-                        project_name=project_path.name,
-                        out_file=None,
-                        success=False,
-                        error=str(e)
-                    ))
-        
+
+        for i, project_path in enumerate(projects, 1):
+            logger.info(f"[{i}/{len(projects)}] 构建: {project_path.name}")
+            try:
+                result = self._build_single(project_path)
+                results.append(result)
+
+                status = "✓" if result.success else "✗"
+                logger.info(f"  {status} {result.project_name} ({result.build_time:.1f}s)")
+
+            except Exception as e:
+                logger.exception(f"构建异常: {project_path.name}")
+                results.append(BuildResult(
+                    project_name=project_path.name,
+                    out_file=None,
+                    success=False,
+                    error=str(e)
+                ))
+
         return results
     
     def _build_single(self, project_path: Path) -> BuildResult:
         """构建单个工程"""
         project_name = project_path.name
         start_time = datetime.now()
+
+        # 通知 GUI：开始构建
+        if self.on_project_start:
+            self.on_project_start(project_name)
 
         # 检查是否已有 .out 文件，如果存在则直接复制，跳过构建
         out_file = self.workspace / project_name / self.build_config / f"{project_name}.out"
@@ -190,11 +206,14 @@ class ProjectBuilder:
             dest_file = self.result_dir / f"{project_name}.out"
             shutil.copy(out_file, dest_file)
             logger.debug(f"    复制: {out_file} -> {dest_file}")
+            build_time = 0.0
+            if self.on_project_finish:
+                self.on_project_finish(project_name, True, build_time)
             return BuildResult(
                 project_name=project_name,
                 out_file=dest_file,
                 success=True,
-                build_time=0.0
+                build_time=build_time
             )
 
         cmd = [
@@ -203,7 +222,8 @@ class ProjectBuilder:
             "-data", str(self.workspace),
             "-application", "com.ti.ccstudio.apps.buildProject",
             "-ccs.projects", project_name,
-            "-ccs.configuration", self.build_config
+            "-ccs.configuration", self.build_config,
+            "-ccs.autoImport", "true"
         ]
 
         stdout_text = ""
@@ -224,8 +244,10 @@ class ProjectBuilder:
                 dest_file = self.result_dir / f"{project_name}.out"
                 shutil.copy(out_file, dest_file)
                 logger.debug(f"    复制: {out_file} -> {dest_file}")
-                
+
                 build_time = (datetime.now() - start_time).total_seconds()
+                if self.on_project_finish:
+                    self.on_project_finish(project_name, True, build_time)
                 return BuildResult(
                     project_name=project_name,
                     out_file=dest_file,
@@ -236,18 +258,23 @@ class ProjectBuilder:
                 error_msg = "构建产物 .out 文件不存在"
                 logger.debug(f"    {error_msg}")
                 logger.debug(f"    构建输出: {stdout_text[:500]}")
-                
+
+                build_time = (datetime.now() - start_time).total_seconds()
+                if self.on_project_finish:
+                    self.on_project_finish(project_name, False, build_time)
                 return BuildResult(
                     project_name=project_name,
                     out_file=None,
                     success=False,
                     error=error_msg,
-                    build_time=(datetime.now() - start_time).total_seconds(),
+                    build_time=build_time,
                     stdout=stdout_text
                 )
-                
+
         except subprocess.TimeoutExpired:
             logger.error(f"    构建超时 ({self.timeout}s)")
+            if self.on_project_finish:
+                self.on_project_finish(project_name, False, self.timeout)
             return BuildResult(
                 project_name=project_name,
                 out_file=None,
@@ -255,9 +282,11 @@ class ProjectBuilder:
                 error=f"构建超时 ({self.timeout}秒)",
                 build_time=self.timeout
             )
-            
+
         except Exception as e:
             logger.exception(f"    构建异常")
+            if self.on_project_finish:
+                self.on_project_finish(project_name, False, 0)
             return BuildResult(
                 project_name=project_name,
                 out_file=None,

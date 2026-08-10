@@ -12,7 +12,7 @@
     "_comment": "工具路径配置",
     "ccs_executable": "C:\\ti\\ccs1210\\ccs\\eclipse\\eclipsec.exe",
     "ccs_dss": "C:\\ti\\ccs1210\\ccs\\ccs_base\\scripting\\bin\\dss.bat",
-    "ccxml": "C:\\Users\\AA\\ti\\CCSTargetConfigurations\\f28335_100v3.ccxml"
+    "ccxml": "C:\\Users\\AA\\ti\\CCSTargetConfigurations\\f28335_100v1.ccxml"
   },
   "build": {
     "_comment": "构建配置",
@@ -33,16 +33,17 @@
     "result_addr": "0x2",
     "success_val": "0xCCCC",
     "error_val": "0xEEEE",
-    "device": "Texas Instruments XDS100v3 USB Debug Probe_0",
+    "device": "Texas Instruments XDS100v1 USB Debug Probe_0",
     "cpu": "C28xx",
     "do_test": true,
     "result_check": {
-      "method": "breakpoint",
+      "method": "memory",
       "success_label": "Right",
       "fail_label": "IDLE",
-      "check_addr": "",
-      "success_val": "",
-      "fail_val": "",
+      "check_addr": "0xfffe",
+      "check_width": 32,
+      "success_val": "0x12345678",
+      "fail_val": "0xeeeeeeee",
       "expression": "",
       "expected_val": ""
     }

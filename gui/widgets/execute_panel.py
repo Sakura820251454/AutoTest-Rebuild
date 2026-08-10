@@ -379,14 +379,25 @@ class ExecutePanel(QWidget):
         用例列表加载完成处理
 
         Args:
-            case_names: 用例名称列表
+            case_names: 可测试用例名称列表（有 .out 文件的工程）
         """
-        # 如果不是断点续测，清空并重新加载所有用例
-        # 如果是断点续测，只添加新用例，保留已有用例状态
+        # 如果不是断点续测，清空并重新加载
         if not self.resume_checkbox.isChecked():
             self.case_table.clear_cases()
+
+            # 添加可测试的用例
             for name in case_names:
                 self.case_table.add_case(name, "pending")
+
+            # 将工作空间中未编译的工程也加入列表，标记为 skipped，
+            # 避免它们从界面消失（用户刷新后能看到全部工程）
+            if self.config:
+                generate_dir = self.config.paths.generate_dir
+                if generate_dir.exists():
+                    for d in sorted(generate_dir.iterdir()):
+                        if d.is_dir() and (d / ".project").exists():
+                            if d.name not in case_names:
+                                self.case_table.add_case(d.name, "skipped")
         else:
             # 断点续测：只添加不存在的用例，保留已有用例状态
             existing_cases = set()
@@ -394,7 +405,7 @@ class ExecutePanel(QWidget):
                 case_name_item = self.case_table.item(row, 0)
                 if case_name_item:
                     existing_cases.add(case_name_item.text())
-            
+
             for name in case_names:
                 if name not in existing_cases:
                     self.case_table.add_case(name, "pending")

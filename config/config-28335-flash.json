@@ -37,12 +37,13 @@
     "cpu": "C28xx",
     "do_test": true,
     "result_check": {
-      "method": "breakpoint",
+      "method": "memory",
       "success_label": "Right",
       "fail_label": "IDLE",
-      "check_addr": "",
-      "success_val": "",
-      "fail_val": "",
+      "check_addr": "0xfffe",
+      "check_width": 32,
+      "success_val": "0x12345678",
+      "fail_val": "0xeeeeeeee",
       "expression": "",
       "expected_val": ""
     }

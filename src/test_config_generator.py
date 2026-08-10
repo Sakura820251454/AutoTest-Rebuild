@@ -131,7 +131,7 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
         output_path: 输出文件路径
 
     Returns:
-        生成的配置文件路径
+        生成的配置文件路径，如果没有找到任何 .out 文件则返回 None
     """
     workspace = config.paths.ccs_workspace
 
@@ -142,6 +142,16 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
         return None
 
     logger.info(f"找到 {len(out_files)} 个 .out 文件")
+
+    # 检查工作空间中是否有未编译的工程（有 .project 但无 .out），给出警告
+    for item in sorted(workspace.iterdir()):
+        if item.is_dir() and (item / ".project").exists():
+            has_out = any(
+                f.suffix == ".out"
+                for f in (item / config.build.build_config).iterdir()
+            ) if (item / config.build.build_config).exists() else False
+            if not has_out:
+                logger.warning(f"  工程 {item.name} 没有编译产物，将被跳过")
 
     cases = []
     for out_file in out_files:

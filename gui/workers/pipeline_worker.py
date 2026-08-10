@@ -333,7 +333,7 @@ class PipelineWorker(QThread):
 
     def _execute_build(self, config: Config) -> bool:
         """
-        执行构建步骤 - 调用真实的构建逻辑
+        执行构建步骤 - 调用真实的构建逻辑，通过回调驱动 GUI 进度
 
         Args:
             config: 配置对象
@@ -343,13 +343,52 @@ class PipelineWorker(QThread):
         """
         try:
             self.log_message.emit("开始构建工程...")
-            
+            self._build_completed = 0
+            self._build_total = 0
+            self._build_success_count = 0
+
             # 检查是否请求停止
             if not self.is_running:
                 return False
 
             # 调用真实的构建器
             builder = ProjectBuilder(config)
+
+            # 设置停止检查回调
+            def should_stop():
+                return not self.is_running
+            builder.should_stop = should_stop
+
+            # 设置回调函数用于实时更新 GUI
+            def on_project_start(name):
+                self.log_message.emit(f"  构建: {name}...")
+                if self._build_total > 0:
+                    progress = int(self._build_completed / self._build_total * 100)
+                    self.progress_updated.emit(
+                        progress,
+                        f"构建进度: {self._build_completed}/{self._build_total} ({progress}%)"
+                    )
+
+            def on_project_finish(name, success, duration_s):
+                self._build_completed += 1
+                if success:
+                    self._build_success_count += 1
+                status_icon = "✓" if success else "✗"
+                self.log_message.emit(f"  {status_icon} {name} ({duration_s:.1f}s)")
+                if self._build_total > 0:
+                    progress = int(self._build_completed / self._build_total * 100)
+                    self.progress_updated.emit(
+                        progress,
+                        f"构建进度: {self._build_completed}/{self._build_total} ({progress}%)"
+                    )
+
+            builder.on_project_start = on_project_start
+            builder.on_project_finish = on_project_finish
+
+            # 先获取工程总数用于进度计算
+            projects = builder.find_projects()
+            self._build_total = len(projects)
+
             results = builder.build_all()
 
             # 检查构建结果

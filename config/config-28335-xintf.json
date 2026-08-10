@@ -29,7 +29,7 @@
   "test": {
     "_comment": "测试配置 - 新版本通过检测 ESTOP0/IDLE 断点判断结果，以下三个配置项已废弃但保留兼容",
     "test_timeout": 45000,
-    "test_batch_size": 1,
+    "test_batch_size": 5,
     "result_addr": "0x2",
     "success_val": "0xCCCC",
     "error_val": "0xEEEE",
