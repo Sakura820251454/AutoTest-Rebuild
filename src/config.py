@@ -56,6 +56,8 @@ CONFIG_DEFAULTS = {
     "auto_resume": True,
     "max_retries": 5,
     "retry_delay": 10,
+    "encrypt_flash_dat": False,
+    "flash_encrypt_verify": False,
 }
 
 
@@ -122,6 +124,8 @@ class TestConfig:
     auto_resume: bool = True       # 断连后自动重连续测
     max_retries: int = 5           # 最大重试次数（0=不限制）
     retry_delay: int = 10          # 重试前等待秒数
+    encrypt_flash_dat: bool = False  # 导出后是否加密 FLASH 段 dat（软仿环境需要）
+    flash_encrypt_verify: bool = False  # 加密后是否回读校验（对应脚本 --verify，耗时翻倍）
 
 
 @dataclass
@@ -139,12 +143,12 @@ class ExportPoint:
     """内存导出时间点配置"""
     when: str  # after_load, before_run, after_run
     enabled: bool = True
-    subdir: str = "Memory"  # 子目录名
+    subdir: str = "memory"  # 子目录名
 
 
 # 默认导出时间点：仅在运行后导出
 DEFAULT_EXPORT_POINTS = [
-    ExportPoint(when="after_run", enabled=True, subdir="Memory")
+    ExportPoint(when="after_run", enabled=True, subdir="memory")
 ]
 
 
@@ -367,6 +371,8 @@ class Config:
             auto_resume=test.get("auto_resume", CONFIG_DEFAULTS["auto_resume"]),
             max_retries=test.get("max_retries", CONFIG_DEFAULTS["max_retries"]),
             retry_delay=test.get("retry_delay", CONFIG_DEFAULTS["retry_delay"]),
+            encrypt_flash_dat=bool(test.get("encrypt_flash_dat", CONFIG_DEFAULTS["encrypt_flash_dat"])),
+            flash_encrypt_verify=bool(test.get("flash_encrypt_verify", CONFIG_DEFAULTS["flash_encrypt_verify"])),
         )
     
     def _parse_test_config_legacy(self, raw: Dict) -> TestConfig:
@@ -383,6 +389,8 @@ class Config:
             auto_resume=raw.get("auto_resume", CONFIG_DEFAULTS["auto_resume"]),
             max_retries=raw.get("max_retries", CONFIG_DEFAULTS["max_retries"]),
             retry_delay=raw.get("retry_delay", CONFIG_DEFAULTS["retry_delay"]),
+            encrypt_flash_dat=bool(raw.get("encrypt_flash_dat", CONFIG_DEFAULTS["encrypt_flash_dat"])),
+            flash_encrypt_verify=bool(raw.get("flash_encrypt_verify", CONFIG_DEFAULTS["flash_encrypt_verify"])),
         )
     
     def _parse_memory_segments_new(self, raw: Dict) -> List[MemorySegment]:
@@ -395,7 +403,8 @@ class Config:
                 name=s["name"],
                 addr=s["addr"],
                 len=s["len"],
-                width=s.get("width", 15)
+                width=s.get("width", 15),
+                page=s.get("page", 0),
             )
             for s in segments_data
         ]
@@ -412,7 +421,8 @@ class Config:
                 name=s["name"],
                 addr=s["addr"],
                 len=s["len"],
-                width=s.get("width", 15)
+                width=s.get("width", 15),
+                page=s.get("page", 0)
             )
             for s in segments_data
         ]
@@ -430,7 +440,7 @@ class Config:
             ExportPoint(
                 when=p.get("when", "after_run"),
                 enabled=p.get("enabled", True),
-                subdir=p.get("subdir", "Memory")
+                subdir=p.get("subdir", "memory")
             )
             for p in points_data
         ]
@@ -475,7 +485,8 @@ class Config:
                         name=s["name"],
                         addr=s["addr"],
                         len=s["len"],
-                        width=s.get("width", 15)
+                        width=s.get("width", 15),
+                        page=s.get("page", 0)
                     )
                     for s in case_data.get("segments", self.memory_segments)
                 ]
@@ -486,7 +497,7 @@ class Config:
                         ExportPoint(
                             when=p.get("when", "after_run"),
                             enabled=p.get("enabled", True),
-                            subdir=p.get("subdir", "Memory")
+                            subdir=p.get("subdir", "memory")
                         )
                         for p in export_points_data
                     ]
@@ -501,13 +512,24 @@ class Config:
                         success_label=rc_data.get("success_label", "Right"),
                         fail_label=rc_data.get("fail_label", "IDLE"),
                         check_addr=rc_data.get("check_addr", ""),
+                        check_width=rc_data.get("check_width", 32),
                         success_val=rc_data.get("success_val", ""),
                         fail_val=rc_data.get("fail_val", ""),
                         expression=rc_data.get("expression", ""),
                         expected_val=rc_data.get("expected_val", "")
                     )
                 else:
-                    result_check = ResultCheck(self.result_check)
+                    result_check = ResultCheck(
+                        method=self.result_check.method,
+                        success_label=self.result_check.success_label,
+                        fail_label=self.result_check.fail_label,
+                        check_addr=self.result_check.check_addr,
+                        check_width=self.result_check.check_width,
+                        success_val=self.result_check.success_val,
+                        fail_val=self.result_check.fail_val,
+                        expression=self.result_check.expression,
+                        expected_val=self.result_check.expected_val,
+                    )
 
                 # 解析Flash项目标志（可选，None表示自动判断）
                 is_flash = case_data.get("is_flash", None)
@@ -582,7 +604,7 @@ class Config:
                     "out": str(c.out),
                     "dat_dir": c.dat_dir,
                     "segments": [
-                        {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
+                        {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
                         for s in c.segments
                     ],
                     "export_points": [
@@ -669,6 +691,8 @@ class Config:
             "auto_resume": self.test.auto_resume,
             "max_retries": self.test.max_retries,
             "retry_delay": self.test.retry_delay,
+            "encrypt_flash_dat": self.test.encrypt_flash_dat,
+            "flash_encrypt_verify": self.test.flash_encrypt_verify,
         })
         
         # 更新 generation 分组
@@ -681,7 +705,7 @@ class Config:
         if "memory_segments" not in config_dict:
             config_dict["memory_segments"] = {}
         config_dict["memory_segments"]["segments"] = [
-            {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
+            {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
             for s in self.memory_segments
         ]
         config_dict["memory_segments"]["export_points"] = [
@@ -713,7 +737,7 @@ class Config:
                     "dat_dir": c.dat_dir,
                     "is_flash": c.is_flash,  # 可选字段，None表示自动判断
                     "segments": [
-                        {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
+                        {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
                         for s in c.segments
                     ],
                     "export_points": [

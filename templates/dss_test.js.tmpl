@@ -93,7 +93,7 @@ function exportMemorySegments(testCfg, subdir) {
 // ==================== 获取导出时间点配置 ====================
 function getExportConfig(exportPoints) {
     if (!exportPoints || exportPoints.length === 0) {
-        return { when: "after_run", enabled: true, subdir: "Memory" };
+        return { when: "after_run", enabled: true, subdir: "memory" };
     }
     // 返回第一个启用的导出点
     for (var i = 0; i < exportPoints.length; i++) {

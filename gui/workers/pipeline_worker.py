@@ -26,6 +26,7 @@ from src.generator import ProjectGenerator
 from src.builder import ProjectBuilder
 from src.executor import TestExecutor
 from src.logger import setup_logger, get_logger, get_log_dir
+from src.runtime_paths import app_path
 
 
 class GUILogHandler(logging.Handler):
@@ -205,11 +206,14 @@ class PipelineWorker(QThread):
                 "auto_resume": self.config.test.auto_resume,
                 "max_retries": self.config.test.max_retries,
                 "retry_delay": self.config.test.retry_delay,
+                "encrypt_flash_dat": self.config.test.encrypt_flash_dat,
+                "flash_encrypt_verify": self.config.test.flash_encrypt_verify,
                 "result_check": {
                     "method": self.config.result_check.method,
                     "success_label": self.config.result_check.success_label,
                     "fail_label": self.config.result_check.fail_label,
                     "check_addr": self.config.result_check.check_addr,
+                    "check_width": self.config.result_check.check_width,
                     "success_val": self.config.result_check.success_val,
                     "fail_val": self.config.result_check.fail_val,
                     "expression": self.config.result_check.expression,
@@ -220,7 +224,7 @@ class PipelineWorker(QThread):
             # 内存段配置
             "memory_segments": {
                 "segments": [
-                    {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
+                    {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
                     for s in self.config.memory_segments
                 ],
                 "export_points": [
@@ -234,14 +238,35 @@ class PipelineWorker(QThread):
                 {
                     "name": case.name,
                     "out": str(case.out),
-                    "dat_dir": case.dat_dir if case.dat_dir else f"5_result_dat/{case.name}",
+                    "dat_dir": case.dat_dir if case.dat_dir else str(app_path("5_result_dat") / case.name).replace("\\", "/"),
+                    "is_flash": case.is_flash,
                     "segments": [
-                        {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width}
+                        {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
                         for s in (case.segments if case.segments else self.config.memory_segments)
-                    ]
+                    ],
+                    "export_points": [
+                        {"when": p.when, "enabled": p.enabled, "subdir": p.subdir}
+                        for p in (case.export_points if case.export_points else self.config.export_points)
+                    ],
+                    "result_check": {
+                        "method": case.result_check.method,
+                        "success_label": case.result_check.success_label,
+                        "fail_label": case.result_check.fail_label,
+                        "check_addr": case.result_check.check_addr,
+                        "check_width": case.result_check.check_width,
+                        "success_val": case.result_check.success_val,
+                        "fail_val": case.result_check.fail_val,
+                        "expression": case.result_check.expression,
+                        "expected_val": case.result_check.expected_val,
+                    },
                 }
                 for case in self.config.cases
-            ]
+            ],
+
+            # 日志配置（Config 本身不解析，原样保留，避免临时配置丢字段）
+            "log": {
+                "log_retention_days": self.config._raw.get("log", {}).get("log_retention_days", 30)
+            },
         }
 
     def _execute_pipeline(self, config_path: str, steps: List[Step]) -> bool:
@@ -512,6 +537,17 @@ class PipelineWorker(QThread):
                 )
 
             self.log_message.emit(f"测试执行完成: {self._test_success_count}/{len(results)} 成功")
+
+            # FLASH 加密失败必须明确告知（不能只留在滚动日志里，也不能当作成功）
+            encrypt_failures = getattr(executor, "encrypt_failures", None) or []
+            if encrypt_failures:
+                self.log_message.emit(f"FLASH 段加密失败 {len(encrypt_failures)} 处，相关数据不能直接用于软仿：")
+                for line in encrypt_failures:
+                    self.log_message.emit(f"  {line}")
+                self.progress_updated.emit(
+                    100,
+                    f"测试完成，但 FLASH 加密失败 {len(encrypt_failures)} 处"
+                )
 
         except Exception as e:
             self.log_message.emit(f"测试执行失败: {str(e)}")

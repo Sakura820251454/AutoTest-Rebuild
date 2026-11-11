@@ -342,6 +342,10 @@ class MainWindow(QMainWindow):
             self.config.test.max_retries = config_dict["max_retries"]
         if "retry_delay" in config_dict:
             self.config.test.retry_delay = config_dict["retry_delay"]
+        if "encrypt_flash_dat" in config_dict:
+            self.config.test.encrypt_flash_dat = config_dict["encrypt_flash_dat"]
+        if "flash_encrypt_verify" in config_dict:
+            self.config.test.flash_encrypt_verify = config_dict["flash_encrypt_verify"]
         
         # 更新内存段配置
         if config_dict.get("memory_segments"):
@@ -356,7 +360,8 @@ class MainWindow(QMainWindow):
                     name=segment_data["name"],
                     addr=segment_data["addr"],
                     len=segment_data["len"],
-                    width=segment_data["width"]
+                    width=segment_data["width"],
+                    page=segment_data.get("page", 0)
                 )
                 self.config.memory_segments.append(segment)
 
@@ -368,7 +373,7 @@ class MainWindow(QMainWindow):
                     ExportPoint(
                         when=p.get("when", "after_run"),
                         enabled=p.get("enabled", True),
-                        subdir=p.get("subdir", "Memory")
+                        subdir=p.get("subdir", "memory")
                     )
                     for p in export_points_data
                 ]

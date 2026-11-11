@@ -22,6 +22,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import Config
+from src.runtime_paths import app_path
 from .case_table import CaseTable
 from ..workers.pipeline_worker import PipelineWorker
 from ..dialogs.hardware_error_dialog import HardwareErrorDialog
@@ -395,7 +396,7 @@ class ExecutePanel(QWidget):
                 generate_dir = self.config.paths.generate_dir
                 if generate_dir.exists():
                     for d in sorted(generate_dir.iterdir()):
-                        if d.is_dir() and (d / ".project").exists():
+                        if d.is_dir() and d.name != ".metadata" and (d / ".project").exists():
                             if d.name not in case_names:
                                 self.case_table.add_case(d.name, "skipped")
         else:
@@ -548,7 +549,7 @@ class ExecutePanel(QWidget):
         from pathlib import Path
         
         # 方法1: 从结果目录获取最新的时间戳
-        result_dir = Path("5_result_dat")
+        result_dir = app_path("5_result_dat")
         if result_dir.exists():
             # 获取所有时间戳目录
             timestamp_dirs = [d for d in result_dir.iterdir() if d.is_dir()]
@@ -563,7 +564,7 @@ class ExecutePanel(QWidget):
                     return timestamp
         
         # 方法2: 从日志目录获取最新的时间戳
-        log_dir = Path("6_result_dat_logs")
+        log_dir = app_path("6_result_dat_logs")
         if log_dir.exists():
             timestamp_dirs = [d for d in log_dir.iterdir() if d.is_dir()]
             if timestamp_dirs:
@@ -575,7 +576,7 @@ class ExecutePanel(QWidget):
                     return timestamp
         
         # 方法3: 从 full_regr.json 配置文件获取
-        config_file = Path("full_regr.json")
+        config_file = app_path("full_regr.json")
         if config_file.exists():
             try:
                 import json
@@ -615,8 +616,8 @@ class ExecutePanel(QWidget):
             # 如果配置中没有用例，从工程目录扫描
             generate_dir = self.config.paths.generate_dir
             if generate_dir.exists():
-                # 扫描工程目录下的子目录作为用例
-                case_dirs = [d for d in generate_dir.iterdir() if d.is_dir()]
+                # 扫描工程目录下的子目录作为用例（排除 .metadata 目录）
+                case_dirs = [d for d in generate_dir.iterdir() if d.is_dir() and d.name != ".metadata"]
                 for case_dir in sorted(case_dirs):
                     # 检查是否是有效的工程目录（包含.project文件或.out文件）
                     has_project = any(case_dir.rglob(".project"))

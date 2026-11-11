@@ -139,6 +139,14 @@ Thumbs.db
 undefined
 
 # ================================
+# Packaging outputs (build artifacts, portable release, legacy archives)
+# ================================
+_packaging/build/
+_packaging/dist/
+_packaging/release/
+_packaging/legacy/
+
+# ================================
 # Auto-generated test config
 # ================================
 full_regr.json

@@ -11,6 +11,7 @@
 
 import subprocess
 import shutil
+import sys
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
@@ -74,7 +75,7 @@ class ProjectBuilder:
         """查找工作空间中的所有有效工程"""
         projects = []
         for item in self.workspace.iterdir():
-            if item.is_dir() and (item / ".project").exists():
+            if item.is_dir() and item.name != ".metadata" and (item / ".project").exists():
                 projects.append(item)
         return sorted(projects)
     
@@ -100,14 +101,21 @@ class ProjectBuilder:
 
             logger.info(f"找到 {len(projects)} 个工程")
 
-            # 清理旧的 .metadata，确保构建时工作空间干净
-            # 不再单独导入工程（importProject 多次调用会触发 Eclipse bug:
-            # "null parent found while sorting trees"），
-            # 改为依靠构建命令的 -ccs.autoImport true 自动导入
+            # 构建前清理 .metadata 并运行一次初始化构建，消耗掉 Eclipse bug
+            # 这样后续正式构建就不会触发 "null parent found while sorting trees" 错误
             metadata_dir = self.workspace / ".metadata"
             if metadata_dir.exists():
                 shutil.rmtree(metadata_dir, ignore_errors=True)
                 logger.debug("  已清理旧的 .metadata 目录")
+
+            # 运行一次初始化构建（使用第一个工程）
+            if projects:
+                logger.info("  运行初始化构建，避免后续构建触发 Eclipse bug...")
+                init_project = projects[0]
+                self._run_init_build(init_project)
+                # 再次清理 .metadata
+                if metadata_dir.exists():
+                    shutil.rmtree(metadata_dir, ignore_errors=True)
 
             results = self._build_projects(projects)
             
@@ -117,7 +125,40 @@ class ProjectBuilder:
             self._print_summary(results)
             
             return results
-    
+
+    def _run_init_build(self, project_path: Path):
+        """运行一次初始化构建，消耗掉 Eclipse 的 "null parent found while sorting trees" bug"""
+        project_name = project_path.name
+        cmd = [
+            str(self.ccs_exe),
+            "-noSplash",
+            "-data", str(self.workspace),
+            "-application", "com.ti.ccstudio.apps.buildProject",
+            "-ccs.projects", project_name,
+            "-ccs.configuration", self.build_config,
+            "-ccs.autoImport", "true"
+        ]
+
+        try:
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(self.workspace),
+                creationflags=creationflags
+            )
+            try:
+                process.communicate(timeout=60)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        except Exception as e:
+            logger.debug(f"  初始化构建忽略: {e}")
+
     def _import_projects(self, projects: List[Path]):
         """逐个导入工程到工作空间（导入成功即完成，退出码非零通常为工作空间保存时的 Eclipse 内部 bug"""
         logger.info("开始导入工程...")
@@ -199,23 +240,6 @@ class ProjectBuilder:
         if self.on_project_start:
             self.on_project_start(project_name)
 
-        # 检查是否已有 .out 文件，如果存在则直接复制，跳过构建
-        out_file = self.workspace / project_name / self.build_config / f"{project_name}.out"
-        if out_file.exists():
-            logger.info(f"  {project_name}: 已存在 .out 文件，跳过构建")
-            dest_file = self.result_dir / f"{project_name}.out"
-            shutil.copy(out_file, dest_file)
-            logger.debug(f"    复制: {out_file} -> {dest_file}")
-            build_time = 0.0
-            if self.on_project_finish:
-                self.on_project_finish(project_name, True, build_time)
-            return BuildResult(
-                project_name=project_name,
-                out_file=dest_file,
-                success=True,
-                build_time=build_time
-            )
-
         cmd = [
             str(self.ccs_exe),
             "-noSplash",
@@ -229,17 +253,65 @@ class ProjectBuilder:
         stdout_text = ""
 
         try:
-            result = subprocess.run(
+            # Windows 下隐藏窗口
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+            # 使用 Popen 实现超时后强制终止（避免 Eclipse 弹窗阻塞进程）
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                cwd=str(self.workspace)
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(self.workspace),
+                creationflags=creationflags
             )
-            stdout_text = result.stdout + result.stderr
-            
+            try:
+                stdout_bytes, stderr_bytes = process.communicate(timeout=self.timeout)
+                stdout_text = (stdout_bytes + stderr_bytes).decode("utf-8", errors="ignore")
+            except subprocess.TimeoutExpired:
+                # 超时后强制终止进程树
+                logger.warning(f"    构建超时 ({self.timeout}s)，强制终止进程...")
+                process.kill()
+                # 等待进程真正退出
+                process.wait(timeout=5)
+                raise
+
+            # 检测工作空间损坏错误（错误写入 .metadata/.log，检查日志文件）
+            log_file = self.workspace / ".metadata" / ".log"
+            need_retry = False
+            if process.returncode != 0 or log_file.exists():
+                if log_file.exists():
+                    try:
+                        log_content = log_file.read_text(encoding="utf-8", errors="ignore")
+                        if "null parent found while sorting trees" in log_content or "Workspace was not properly initialized" in log_content:
+                            need_retry = True
+                    except:
+                        pass
+
+            if need_retry:
+                logger.warning(f"    检测到工作空间损坏（退出码: {process.returncode}），清理 .metadata 后重试...")
+                metadata_dir = self.workspace / ".metadata"
+                if metadata_dir.exists():
+                    shutil.rmtree(metadata_dir, ignore_errors=True)
+                # 重试构建
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=str(self.workspace),
+                    creationflags=creationflags
+                )
+                try:
+                    stdout_bytes, stderr_bytes = process.communicate(timeout=self.timeout)
+                    stdout_text = (stdout_bytes + stderr_bytes).decode("utf-8", errors="ignore")
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                    raise
+
             out_file = self.workspace / project_name / self.build_config / f"{project_name}.out"
-            
+
             if out_file.exists():
                 dest_file = self.result_dir / f"{project_name}.out"
                 shutil.copy(out_file, dest_file)

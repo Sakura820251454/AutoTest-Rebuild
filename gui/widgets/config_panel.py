@@ -274,6 +274,35 @@ class ConfigPanel(QWidget):
         flash_layout.addStretch()
         memory_layout.addLayout(flash_layout)
 
+        # FLASH 段 dat 加密选项（导出后自动调用 encrypt_flash_dat.py）
+        encrypt_layout = QHBoxLayout()
+        self.encrypt_flash_checkbox = QCheckBox("加密 FLASH 段 dat（软仿环境需要）")
+        self.encrypt_flash_checkbox.setToolTip(
+            "勾选后，导出结束会调用 encrypt_flash_dat.py，把每个用例的 FLASH.dat\n"
+            "拆分为 FLASH0.dat ~ FLASH3.dat（加密后才能在软仿环境运行）。\n"
+            "原始 FLASH.dat 会保留；脚本需放在程序目录下。"
+        )
+        self.encrypt_flash_checkbox.setChecked(False)
+        self.encrypt_flash_checkbox.stateChanged.connect(self._on_encrypt_flash_toggled)
+        encrypt_layout.addWidget(self.encrypt_flash_checkbox)
+
+        self.flash_verify_checkbox = QCheckBox("加密后回读校验")
+        self.flash_verify_checkbox.setToolTip(
+            "对应加密脚本的 --verify：加密后把 FLASH0~3.dat 解密重组，\n"
+            "与原始 FLASH.dat 逐行比对，确认加密无误（耗时约翻倍）。\n"
+            "仅在上面勾选加密后生效。"
+        )
+        self.flash_verify_checkbox.setChecked(False)
+        self.flash_verify_checkbox.setEnabled(False)
+        self.flash_verify_checkbox.stateChanged.connect(self.on_config_modified)
+        encrypt_layout.addWidget(self.flash_verify_checkbox)
+
+        encrypt_info = QLabel("（未勾选时保持原有导出行为，不做任何加密）")
+        encrypt_info.setStyleSheet("color: gray;")
+        encrypt_layout.addWidget(encrypt_info)
+        encrypt_layout.addStretch()
+        memory_layout.addLayout(encrypt_layout)
+
         # 内存段表格
         self.memory_table = QTableWidget()
         self.memory_table.setColumnCount(5)
@@ -540,6 +569,9 @@ class ConfigPanel(QWidget):
         self.auto_resume_check.setChecked(config.test.auto_resume)
         self.max_retries_spin.setValue(config.test.max_retries)
         self.retry_delay_spin.setValue(config.test.retry_delay)
+        self.encrypt_flash_checkbox.setChecked(bool(getattr(config.test, "encrypt_flash_dat", False)))
+        self.flash_verify_checkbox.setChecked(bool(getattr(config.test, "flash_encrypt_verify", False)))
+        self.flash_verify_checkbox.setEnabled(self.encrypt_flash_checkbox.isChecked())
 
         # 加载结果判断配置
         result_check = config.result_check
@@ -639,6 +671,8 @@ class ConfigPanel(QWidget):
             "auto_resume": self.auto_resume_check.isChecked(),
             "max_retries": self.max_retries_spin.value(),
             "retry_delay": self.retry_delay_spin.value(),
+            "encrypt_flash_dat": self.encrypt_flash_checkbox.isChecked(),
+            "flash_encrypt_verify": self.flash_verify_checkbox.isChecked(),
             
             # 内存段配置
             "memory_segments": {
@@ -671,7 +705,7 @@ class ConfigPanel(QWidget):
         # 收集导出时间点配置
         when = self.export_when_combo.currentText()
         config_dict["memory_segments"]["export_points"] = [
-            {"when": when, "enabled": True, "subdir": "Memory"}
+            {"when": when, "enabled": True, "subdir": "memory"}
         ]
 
         # 收集 Flash 项目配置（三态复选框）
@@ -782,6 +816,12 @@ class ConfigPanel(QWidget):
     def on_config_modified(self):
         """配置修改处理"""
         self.config_changed.emit()
+
+    def _on_encrypt_flash_toggled(self, state):
+        """加密开关变化：未开启加密时，加密子选项一律禁用"""
+        enabled = self.encrypt_flash_checkbox.isChecked()
+        self.flash_verify_checkbox.setEnabled(enabled)
+        self.on_config_modified()
     
     def on_load_config(self):
         """加载配置按钮处理"""

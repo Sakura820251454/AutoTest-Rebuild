@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Optional, Dict, Union
 from logging.handlers import RotatingFileHandler
 
+from .runtime_paths import app_path
+
 
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -54,7 +56,7 @@ def setup_logger(
     设置日志系统
     
     Args:
-        log_dir: 日志目录，默认为当前工作目录下的 logs/YYYY-MM-DD/
+        log_dir: 日志目录，默认为程序目录下的 logs/YYYY-MM-DD/
         console_level: 控制台日志级别
         file_level: 文件日志级别
         root_level: 根日志级别
@@ -65,7 +67,7 @@ def setup_logger(
     global _log_dir
     
     if log_dir is None:
-        _log_dir = Path.cwd() / "logs" / datetime.now().strftime("%Y-%m-%d")
+        _log_dir = app_path("logs") / datetime.now().strftime("%Y-%m-%d")
     else:
         _log_dir = Path(log_dir)
     
@@ -77,11 +79,13 @@ def setup_logger(
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(console_level)
-    console_formatter = ColoredFormatter(LOG_FORMAT, datefmt=DATE_FORMAT)
-    console_handler.setFormatter(console_formatter)
-    root_logger.addHandler(console_handler)
+    # 打包为 --windowed 后没有控制台，sys.stdout 为 None，此时跳过控制台 handler 只保留文件日志
+    if sys.stdout is not None:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(console_level)
+        console_formatter = ColoredFormatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+        console_handler.setFormatter(console_formatter)
+        root_logger.addHandler(console_handler)
     
     main_log_file = _log_dir / "autotest.log"
     file_handler = logging.FileHandler(main_log_file, encoding="utf-8")

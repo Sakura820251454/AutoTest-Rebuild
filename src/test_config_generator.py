@@ -12,6 +12,7 @@ from typing import Optional
 
 from .config import Config, DEFAULT_EXPORT_POINTS, DEFAULT_RESULT_CHECK
 from .logger import get_logger, LogContext
+from .runtime_paths import app_path
 
 logger = get_logger(__name__)
 
@@ -60,7 +61,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
         if case.dat_dir:
             dat_dir = case.dat_dir
         else:
-            dat_dir = f"5_result_dat/{run_timestamp}/{case.name}"
+            dat_dir = str(app_path("5_result_dat") / run_timestamp / case.name).replace("\\", "/")
 
         # 获取导出时间点配置
         export_points = [
@@ -112,7 +113,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
     }
 
     if output_path is None:
-        output_path = Path("full_regr.json")
+        output_path = app_path("full_regr.json")
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(test_config, f, ensure_ascii=False, indent=2)
@@ -145,18 +146,18 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
 
     # 检查工作空间中是否有未编译的工程（有 .project 但无 .out），给出警告
     for item in sorted(workspace.iterdir()):
-        if item.is_dir() and (item / ".project").exists():
+        if item.is_dir() and item.name != ".metadata" and (item / ".project").exists():
             has_out = any(
                 f.suffix == ".out"
                 for f in (item / config.build.build_config).iterdir()
             ) if (item / config.build.build_config).exists() else False
             if not has_out:
-                logger.warning(f"  工程 {item.name} 没有编译产物，将被跳过")
+                logger.debug(f"  工程 {item.name} 没有编译产物，将被跳过")
 
     cases = []
     for out_file in out_files:
         case_name = out_file.stem
-        dat_dir = f"5_result_dat/{run_timestamp}/{case_name}"
+        dat_dir = str(app_path("5_result_dat") / run_timestamp / case_name).replace("\\", "/")
 
         # 获取导出时间点配置
         export_points = [
@@ -202,7 +203,7 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
     }
 
     if output_path is None:
-        output_path = Path("full_regr.json")
+        output_path = app_path("full_regr.json")
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(test_config, f, ensure_ascii=False, indent=2)

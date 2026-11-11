@@ -12,6 +12,7 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 from .logger import get_logger
+from .runtime_paths import app_path
 
 logger = get_logger(__name__)
 
@@ -25,7 +26,8 @@ class TestResult:
     error: Optional[str] = None
 
 
-def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List[TestResult]) -> None:
+def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List[TestResult],
+                            encrypt_states: Optional[Dict[str, Dict[str, str]]] = None) -> None:
     """
     生成汇总报告（CSV + Excel）
 
@@ -33,6 +35,8 @@ def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List
         run_timestamp: 运行时间戳
         cases: 用例配置列表
         results: 测试结果列表
+        encrypt_states: 勾选 FLASH 加密时传入 {用例名: {"result":..., "text":...}}；
+                        为 None 表示未开启加密，表格结构与原来完全一致
     """
     if not results:
         return
@@ -46,16 +50,21 @@ def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List
 
     # 如果没有有效的 dat_dir，使用默认路径
     if time_dir is None:
-        time_dir = Path("5_result_dat") / run_timestamp
+        time_dir = app_path("5_result_dat") / run_timestamp
         time_dir.mkdir(parents=True, exist_ok=True)
 
     summary_csv = time_dir / "summary.csv"
 
     # 生成完整的 CSV 汇总文件（包含所有用例）
     # 注意：DSS 脚本只生成批次内的汇总，这里生成总的汇总
+    # 开启 FLASH 加密时追加第三列"FLASH加密"，未开启时保持原来的两列
     with open(summary_csv, "w", encoding="utf-8") as f:
         for result in results:
-            f.write(f"{result.case_name},{result.status}\n")
+            if encrypt_states is None:
+                f.write(f"{result.case_name},{result.status}\n")
+            else:
+                state = encrypt_states.get(result.case_name, {})
+                f.write(f"{result.case_name},{result.status},{state.get('text', '')}\n")
 
     success_count = sum(1 for r in results if r.status == "Success")
     total_count = len(results)
@@ -65,16 +74,18 @@ def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List
     logger.info(f"报告文件: {summary_csv}")
     logger.info("=" * 60)
 
-    _generate_excel_report(time_dir, results)
+    _generate_excel_report(time_dir, results, encrypt_states)
 
 
-def _generate_excel_report(time_dir: Path, results: List[TestResult]) -> None:
+def _generate_excel_report(time_dir: Path, results: List[TestResult],
+                           encrypt_states: Optional[Dict[str, Dict[str, str]]] = None) -> None:
     """
     生成 Excel 报告
 
     Args:
         time_dir: 时间戳目录
         results: 测试结果列表
+        encrypt_states: 开启 FLASH 加密时为 {用例名: {"text":...}}，会多出一列
     """
     try:
         import pandas as pd
@@ -89,9 +100,14 @@ def _generate_excel_report(time_dir: Path, results: List[TestResult]) -> None:
     if not summary_csv.exists():
         return
 
-    df = pd.read_csv(summary_csv, names=["TestCase", "Status"])
-    df.insert(0, "序号", range(1, len(df) + 1))
-    df = df[["序号", "TestCase", "Status"]]
+    if encrypt_states is None:
+        df = pd.read_csv(summary_csv, names=["TestCase", "Status"])
+        df.insert(0, "序号", range(1, len(df) + 1))
+        df = df[["序号", "TestCase", "Status"]]
+    else:
+        df = pd.read_csv(summary_csv, names=["TestCase", "Status", "FLASH加密"], keep_default_na=False)
+        df.insert(0, "序号", range(1, len(df) + 1))
+        df = df[["序号", "TestCase", "Status", "FLASH加密"]]
 
     xlsx = summary_csv.with_suffix(".xlsx")
     df.to_excel(xlsx, index=False)

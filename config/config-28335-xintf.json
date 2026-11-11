@@ -2,11 +2,11 @@
   "_comment": "AutoTest 配置文件 - 详细说明请参考 README.md",
   "paths": {
     "_comment": "路径配置 - 支持绝对路径和相对路径（相对于配置文件所在目录）",
-    "template_dir": "D:\\AutoTest_rebuild\\1_project_templete\\ccs_insts_test",
-    "source_dir": "D:\\AutoTest_rebuild\\2_source_file",
-    "generate_dir": "D:\\AutoTest_rebuild\\3_generate_project",
-    "result_dir": "D:\\AutoTest_rebuild\\4_result_out",
-    "ccs_workspace": "D:\\AutoTest_rebuild\\3_generate_project"
+    "template_dir": "../1_project_templete\\ccs_insts_test",
+    "source_dir": "../2_source_file",
+    "generate_dir": "../3_generate_project",
+    "result_dir": "../4_result_out",
+    "ccs_workspace": "../3_generate_project"
   },
   "tools": {
     "_comment": "工具路径配置",
@@ -17,7 +17,7 @@
   "build": {
     "_comment": "构建配置",
     "build_config": "Debug",
-    "build_timeout": 600,
+    "build_timeout": 60,
     "max_build_threads": 4,
     "do_generate": true,
     "do_build": true
@@ -37,15 +37,19 @@
     "cpu": "C28xx",
     "do_test": true,
     "result_check": {
-      "method": "breakpoint",
+      "method": "memory",
       "success_label": "Right",
       "fail_label": "IDLE",
-      "check_addr": "",
-      "success_val": "",
-      "fail_val": "",
+      "check_addr": "0xfffe",
+      "check_width": 32,
+      "success_val": "0x12345678",
+      "fail_val": "0xeeeeeeee",
       "expression": "",
       "expected_val": ""
-    }
+    },
+    "auto_resume": true,
+    "max_retries": 5,
+    "retry_delay": 10
   },
   "memory_segments": {
     "segments": [
@@ -120,7 +124,7 @@
       {
         "when": "after_run",
         "enabled": true,
-        "subdir": "Memory"
+        "subdir": "memory"
       }
     ]
   },

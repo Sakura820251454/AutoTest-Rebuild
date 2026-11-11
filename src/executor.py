@@ -28,6 +28,8 @@ from .exceptions import (
     TestExecutionError,
 )
 from .logger import get_logger, LogContext
+from .runtime_paths import app_path, resource_path
+from .flash_encrypt import encrypt_flash_dat_file
 from .hardware_detector import quick_hardware_check
 from . import test_config_generator
 from . import report_generator
@@ -70,8 +72,13 @@ class TestExecutor:
         self.auto_resume = config.test.auto_resume
         self.max_retries = config.test.max_retries
         self.retry_delay = config.test.retry_delay
+        self.encrypt_flash_dat = bool(getattr(config.test, "encrypt_flash_dat", False))
+        self.encrypt_verify = bool(getattr(config.test, "flash_encrypt_verify", False))
+        self.encrypt_failures: List[str] = []
+        # 用例名 -> {"result": success/failed/skip, "text": 表格里显示的文字}
+        self.encrypt_status: Dict[str, Dict[str, str]] = {}
         
-        self.template_path = Path(__file__).parent.parent / "templates" / "dss_test.js.tmpl"
+        self.template_path = resource_path("templates/dss_test.js.tmpl")
         # 如果提供了时间戳则使用，否则生成新的（用于断点续测时保持时间戳一致）
         self.run_timestamp = run_timestamp if run_timestamp else datetime.now().strftime("%Y-%m-%d-%H-%M")
         
@@ -187,7 +194,7 @@ class TestExecutor:
             
             self._create_output_dirs(cases)
             
-            log_dir = Path("6_result_dat_logs") / self.run_timestamp
+            log_dir = app_path("6_result_dat_logs") / self.run_timestamp
             log_dir.mkdir(parents=True, exist_ok=True)
             
             batches = self._split_into_batches(cases, self.batch_size)
@@ -378,9 +385,13 @@ class TestExecutor:
                 if case["name"] in case_name_to_result:
                     sorted_results.append(case_name_to_result[case["name"]])
             
-            self._generate_summary_report(cases, sorted_results)
-            
             self._post_process_dat_files(cases)
+
+            if self.encrypt_flash_dat:
+                self._encrypt_flash_dats(cases)
+
+            # 报表放在加密之后，才能把每个用例的加密结果写进表格
+            self._generate_summary_report(cases, sorted_results)
             
             self._cleanup_old_logs()
             
@@ -758,7 +769,7 @@ print("检测完成");
                         }
                         for s in case["segments"]
                     ],
-                    "export_points": case.get("export_points", [{"when": "after_run", "enabled": True, "subdir": "Memory"}]),
+                    "export_points": case.get("export_points", [{"when": "after_run", "enabled": True, "subdir": "memory"}]),
                     "result_check": case.get("result_check", {"method": "breakpoint", "success_label": "Right", "fail_label": "IDLE"})
                 }
                 for case in batch
@@ -975,15 +986,16 @@ print("检测完成");
         return results
 
     def _generate_summary_report(self, cases: List[Dict], results: List[TestResult]):
-        """生成汇总报告（代理方法）"""
-        report_generator.generate_summary_report(self.run_timestamp, cases, results)
+        """生成汇总报告（代理方法）；开启 FLASH 加密时附带每个用例的加密结果"""
+        encrypt_states = self.encrypt_status if self.encrypt_flash_dat else None
+        report_generator.generate_summary_report(self.run_timestamp, cases, results, encrypt_states)
 
     def _post_process_dat_files(self, cases: List[Dict]):
         """后处理 .dat 文件（删除文件头）"""
         for case in cases:
-            export_points = case.get("export_points", [{"when": "after_run", "subdir": "Memory"}])
+            export_points = case.get("export_points", [{"when": "after_run", "subdir": "memory"}])
             for ep in export_points:
-                subdir = ep.get("subdir", "Memory")
+                subdir = ep.get("subdir", "memory")
                 memory_dir = Path(case["dat_dir"]) / subdir
                 if memory_dir.exists():
                     for dat_file in memory_dir.glob("*.dat"):
@@ -1032,11 +1044,99 @@ print("检测完成");
         except Exception as e:
             logger.debug(f"处理文件失败 {file_path}: {e}")
     
+    @staticmethod
+    def _short_encrypt_reason(detail: str) -> str:
+        """把加密失败的长信息压成表格里能看懂的短语"""
+        rules = (
+            ("rows, expected", "行数不符"),
+            ("not a 64-bit", "数据格式错误"),
+            ("roundtrip", "回读校验不一致"),
+            ("未找到加密脚本", "加密脚本缺失"),
+            ("缺少产物", "产物缺失"),
+            ("超时", "加密超时"),
+            ("不存在", "FLASH.dat 缺失"),
+        )
+        for key, text in rules:
+            if key in detail:
+                return text
+        return detail.strip()[:40] or "未知错误"
+
+    def _encrypt_flash_dats(self, cases: List[Dict]):
+        """
+        加密各用例导出的 FLASH 段 dat（拆成 FLASH0.dat ~ FLASH3.dat）
+
+        必须在 _post_process_dat_files 之后执行：加密脚本要求输入是不带 CCS 文件头的
+        纯十六进制数据。原始 FLASH.dat 保留不动，输出写在同一目录。
+        每个用例的结果记录到 self.encrypt_status，供汇总表格直接读取（不靠事后扫磁盘）。
+        失败不做静默跳过：逐条 ERROR 记录，并汇总到 self.encrypt_failures 供 GUI 展示。
+        """
+        self.encrypt_failures = []
+        self.encrypt_status = {}
+        done = 0
+        
+        for case in cases:
+            case_name = case.get("name", "")
+            export_points = case.get("export_points", [{"when": "after_run", "subdir": "memory"}])
+            has_flash_seg = any(seg.get("name") == "FLASH" for seg in case.get("segments", []))
+            
+            dat_dir = Path(case["dat_dir"])
+            if not dat_dir.is_absolute():
+                dat_dir = app_path(str(dat_dir))
+            
+            ok_count = 0
+            fail_text = ""
+            # 同一用例的多个导出时间点若 subdir 相同，指向的是同一个 FLASH.dat，
+            # 只加密一次，避免重复耗时、重复错误日志和成功计数虚高
+            seen_dirs = set()
+            for ep in export_points:
+                subdir = ep.get("subdir", "memory")
+                key = (str(dat_dir), subdir)
+                if key in seen_dirs:
+                    logger.debug(f"用例 {case_name} 的导出目录 {subdir} 重复，跳过重复加密")
+                    continue
+                seen_dirs.add(key)
+                flash_dat = dat_dir / subdir / "FLASH.dat"
+                if not flash_dat.exists():
+                    # RAM 用例本来就没有 FLASH 段，正常跳过；配了 FLASH 段却没导出成功才报错
+                    if has_flash_seg and not fail_text:
+                        msg = f"用例 {case_name} 的 FLASH.dat 不存在: {flash_dat}"
+                        logger.error(msg)
+                        self.encrypt_failures.append(msg)
+                        fail_text = "FLASH.dat 缺失"
+                    continue
+                
+                ok, detail = encrypt_flash_dat_file(flash_dat, verify=self.encrypt_verify)
+                if ok:
+                    ok_count += 1
+                    done += 1
+                    logger.info(f"FLASH 加密完成 [{case_name}]: {detail}")
+                else:
+                    msg = f"用例 {case_name} FLASH 加密失败: {detail}"
+                    logger.error(msg)
+                    self.encrypt_failures.append(msg)
+                    if not fail_text:
+                        fail_text = self._short_encrypt_reason(detail)
+            
+            if fail_text:
+                self.encrypt_status[case_name] = {"result": "failed", "text": f"失败（{fail_text}）"}
+            elif ok_count:
+                self.encrypt_status[case_name] = {"result": "success", "text": "成功（FLASH0~3.dat）"}
+            else:
+                self.encrypt_status[case_name] = {"result": "skip", "text": "不适用（无 FLASH 段）"}
+        
+        if self.encrypt_failures:
+            logger.error(
+                f"FLASH 加密失败 {len(self.encrypt_failures)} 处，相关用例的 FLASH 数据不能直接用于软仿，"
+                f"请按上面的错误信息处理后重新执行，或手动运行 encrypt_flash_dat.py 补加密"
+            )
+        elif done:
+            logger.info(f"FLASH 段加密完成: 共 {done} 个用例")
+    
     def _cleanup_old_logs(self, days: int = 30):
         """清理旧日志"""
         import time
         cutoff = time.time() - days * 86400
-        log_root = Path("6_result_dat_logs")
+        log_root = app_path("6_result_dat_logs")
         
         if not log_root.exists():
             return
