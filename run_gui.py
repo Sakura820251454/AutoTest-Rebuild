@@ -6,7 +6,8 @@ AutoTest GUI 启动脚本
 @input PyQt5 (GUI框架)
 @input gui.main_window.MainWindow (主窗口)
 @output main()函数
-@pos GUI程序入口，检查依赖、初始化PyQt5应用、启动主窗口；兼容源码运行与 --windowed 打包运行
+@pos GUI程序入口，检查依赖、初始化PyQt5应用、启动主窗口；兼容源码运行与 --windowed 打包运行，
+     并在冻结态显式锁定随包 Qt 插件路径（不受外部 QT_* 环境变量影响）
 
 一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
@@ -22,7 +23,59 @@ from pathlib import Path
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.runtime_paths import app_root, app_path, is_frozen
+from src.runtime_paths import app_root, app_path, bundle_root, is_frozen
+
+
+def _qt_plugin_root():
+    """
+    随包的 Qt 插件根目录；源码模式返回 None（交给本机 PyQt5 自己处理）
+
+    冻结态下 PyQt5 包位于 bundle_root() 内，插件在其 Qt5/plugins（PyQt5 5.15 wheel 布局），
+    老版本 PyQt5 为 Qt/plugins。不写死 _internal/runtime 之类目录名。
+    """
+    if not is_frozen():
+        return None
+    candidates = [
+        bundle_root() / "PyQt5" / "Qt5" / "plugins",
+        bundle_root() / "PyQt5" / "Qt" / "plugins",
+    ]
+    for path in candidates:
+        if path.is_dir():
+            return path
+    return candidates[0]
+
+
+def _prepare_qt_environment():
+    """
+    创建 QApplication 之前把 Qt 插件路径锁定到随包目录
+
+    外部环境的 QT_PLUGIN_PATH / QT_QPA_PLATFORM_PLUGIN_PATH / QT_QPA_PLATFORM
+    会让 Qt 去别处找平台插件，或去找一个根本没随包提供的平台插件，
+    表现就是启动时弹 "no Qt platform plugin could be initialized"。
+    这里一律显式覆盖（不是“缺失时才设置”），保证不依赖外部环境。
+    """
+    plugin_root = _qt_plugin_root()
+    if plugin_root is None:
+        return None
+
+    platforms_dir = plugin_root / "platforms"
+    os.environ["QT_PLUGIN_PATH"] = str(plugin_root)
+    os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platforms_dir)
+
+    # QT_QPA_PLATFORM 指向没随包提供的平台插件时 Qt 会直接致命退出，清掉让它回落默认
+    requested = os.environ.get("QT_QPA_PLATFORM", "").split(":")[0].strip().lower()
+    if requested and not (platforms_dir / f"q{requested}.dll").is_file():
+        os.environ.pop("QT_QPA_PLATFORM", None)
+
+    # 让随包 Qt DLL 目录参与依赖解析，避免平台插件本身因依赖找不到而加载失败
+    if hasattr(os, "add_dll_directory"):
+        for dll_dir in (plugin_root.parent / "bin", bundle_root()):
+            if dll_dir.is_dir():
+                try:
+                    os.add_dll_directory(str(dll_dir))
+                except OSError:
+                    pass
+    return plugin_root
 
 
 def _setup_console_streams():
@@ -114,6 +167,20 @@ def _run(args):
 
     os.chdir(app_root())
 
+    # 必须在导入 PyQt5 / 创建 QApplication 之前完成，否则 Qt 已经按外部环境找过插件了
+    qt_plugins = _prepare_qt_environment()
+    if qt_plugins is not None:
+        platforms_dir = qt_plugins / "platforms"
+        if not any(platforms_dir.glob("q*.dll")):
+            message = (
+                "错误: 程序包不完整，缺少 Qt 平台插件。\n\n"
+                f"期望位置: {platforms_dir}\n\n"
+                "请重新解压完整的程序目录（不要只复制 exe 文件）。"
+            )
+            _write_crash_log(message + "\n", "qt_plugin_missing")
+            _show_message_box(message, "AutoTest GUI 启动失败")
+            sys.exit(1)
+
     if not check_dependencies():
         # 仅源码模式允许自动安装；打包模式 install_dependencies 会直接返回 False
         installed = args.install_deps and install_dependencies() and check_dependencies()
@@ -132,6 +199,12 @@ def _run(args):
 
     # 创建应用程序
     app = QApplication(sys.argv)
+
+    # 兜底：把随包插件目录以绝对路径插到库路径首位（QApplication 创建后才有效）
+    if qt_plugins is not None:
+        from PyQt5.QtCore import QCoreApplication
+        QCoreApplication.addLibraryPath(str(qt_plugins))
+
     app.setApplicationName("AutoTest GUI")
     app.setApplicationVersion("1.0.0")
 
