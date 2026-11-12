@@ -133,11 +133,13 @@ class ConfigPanel(QWidget):
             path_layout.addWidget(selector, i, 1)
             self.path_selectors[key] = selector
 
-        # 导出 dat 目录：固定落在程序目录下，只做只读展示
+        # 导出 dat 目录：可编辑，默认显示解析后的实际路径
         path_layout.addWidget(QLabel("导出 dat 目录:"), len(path_configs), 0)
-        self.result_dat_label = QLabel(str(app_path("results")))
-        self.result_dat_label.setToolTip("测试结果（memory/*.dat、project/、summary.csv）写入此目录")
-        path_layout.addWidget(self.result_dat_label, len(path_configs), 1)
+        self.results_dir_selector = PathSelector("dir")
+        self.results_dir_selector.setToolTip("测试结果（memory/*.dat、project/、summary.csv）写入此目录")
+        self.results_dir_selector.path_changed.connect(self.on_config_modified)
+        path_layout.addWidget(self.results_dir_selector, len(path_configs), 1)
+        self.path_selectors["results_dir"] = self.results_dir_selector
 
         # 模板模式专用字段：manual 模式下隐藏，切换模式时立即刷新
         self.template_mode_widgets = []
@@ -568,7 +570,10 @@ class ConfigPanel(QWidget):
         button_layout.addStretch()
         
         main_layout.addLayout(button_layout)
-    
+
+        # 初始就按默认模式应用一次可见性（不依赖用户切换下拉框）
+        self._apply_generation_mode_visibility()
+
     def load_config(self, config: Config):
         """
         加载配置到界面
@@ -587,7 +592,7 @@ class ConfigPanel(QWidget):
         self.path_selectors["ccs_executable"].set_path(str(config.paths.ccs_executable))
         self.path_selectors["ccs_dss"].set_path(str(config.paths.ccs_dss))
         self.path_selectors["ccxml"].set_path(str(config.paths.ccxml))
-        self.result_dat_label.setText(str(app_path("results")))
+        self.results_dir_selector.set_path(str(config.paths.results_dir))
         
         # 加载构建设置
         self.build_config_combo.setCurrentText(config.build.build_config)
@@ -674,7 +679,7 @@ class ConfigPanel(QWidget):
             self.is_flash_checkbox.setCheckState(Qt.PartiallyChecked)
 
         # 按当前生成模式刷新模板/源文件目录的可见性
-        self._refresh_template_field_visibility(self.generation_mode_combo.currentText())
+        self._apply_generation_mode_visibility()
 
     def get_config_dict(self) -> Dict[str, Any]:
         """
@@ -689,6 +694,7 @@ class ConfigPanel(QWidget):
             "source_dir": self.path_selectors["source_dir"].get_path(),
             "generate_dir": self.path_selectors["generate_dir"].get_path(),
             "result_dir": self.path_selectors["result_dir"].get_path(),
+            "results_dir": self.results_dir_selector.get_path(),
             "ccs_workspace": self.path_selectors["ccs_workspace"].get_path(),
             "ccs_executable": self.path_selectors["ccs_executable"].get_path(),
             "ccs_dss": self.path_selectors["ccs_dss"].get_path(),
@@ -861,12 +867,19 @@ class ConfigPanel(QWidget):
 
     def _on_generation_mode_changed(self, mode: str):
         """生成模式切换：立即刷新模板专用字段的可见性"""
-        self._refresh_template_field_visibility(mode)
+        self._apply_generation_mode_visibility()
         self.on_config_modified()
 
-    def _refresh_template_field_visibility(self, mode: str):
-        """template 模式显示模板/源文件目录，manual 模式隐藏（隐藏时值仍保留）"""
-        visible = (mode or "").strip().lower() == "template"
+    def _apply_generation_mode_visibility(self):
+        """
+        按当前生成模式应用模板/源文件目录的可见性（标签与输入框整行一起隐藏）
+
+        所有会改变生成模式的入口（构造默认值、加载配置、下拉框切换、恢复默认）
+        都必须调用这里，不能只依赖下拉框信号。
+        manual 模式下隐藏时只隐藏控件，字段值仍保留，保存时不丢。
+        """
+        mode = (self.generation_mode_combo.currentText() or "").strip().lower()
+        visible = mode == "template"
         for widget in self.template_mode_widgets:
             widget.setVisible(visible)
 
@@ -963,11 +976,14 @@ class ConfigPanel(QWidget):
             # 清空所有输入
             for selector in self.path_selectors.values():
                 selector.set_path("")
+            # 导出 dat 目录回到默认（程序目录下 results）
+            self.results_dir_selector.set_path(str(app_path("results")))
             
             self.build_config_combo.setCurrentIndex(0)
             self.build_timeout_spin.setValue(600)
             self.max_threads_spin.setValue(4)
             self.generation_mode_combo.setCurrentText("template")
+            self._apply_generation_mode_visibility()
             self.test_timeout_spin.setValue(45000)
             self.batch_size_spin.setValue(10)
             self.device_edit.clear()

@@ -65,6 +65,9 @@ CONFIG_DEFAULTS = {
     "copy_project": True,
 }
 
+# 导出 dat 根目录默认值：相对配置文件目录，与 workspace 等保持同一写法
+DEFAULT_RESULTS_DIR = "../results"
+
 
 @dataclass
 class PathConfig:
@@ -73,6 +76,7 @@ class PathConfig:
     source_dir: Path
     generate_dir: Path
     result_dir: Path
+    results_dir: Path          # 导出 dat 根目录（相对配置文件目录或绝对路径）
     ccs_workspace: Path
     ccs_executable: Path
     ccs_dss: Path
@@ -356,6 +360,7 @@ class Config:
             source_dir=self._resolve_path(paths.get("source_dir", "")),
             generate_dir=generate_dir,
             result_dir=self._resolve_path(paths.get("result_dir", "")),
+            results_dir=self._resolve_path(paths.get("results_dir", DEFAULT_RESULTS_DIR)),
             ccs_workspace=ccs_workspace,
             ccs_executable=self._resolve_path(tools.get("ccs_executable", "")),
             ccs_dss=self._resolve_path(tools.get("ccs_dss", "")),
@@ -370,6 +375,7 @@ class Config:
             source_dir=self._resolve_path(raw.get("source_dir", "")),
             generate_dir=generate_dir,
             result_dir=self._resolve_path(raw.get("result_dir", "")),
+            results_dir=self._resolve_path(raw.get("results_dir", DEFAULT_RESULTS_DIR)),
             ccs_workspace=ccs_workspace,
             ccs_executable=self._resolve_path(raw.get("ccs_executable", "")),
             ccs_dss=self._resolve_path(raw.get("ccs_dss", "")),
@@ -726,6 +732,7 @@ class Config:
             "source_dir": self._format_save_path(self.paths.source_dir),
             "generate_dir": self._format_save_path(self.paths.generate_dir),
             "result_dir": self._format_save_path(self.paths.result_dir),
+            "results_dir": self._format_save_path(self.paths.results_dir),
             # ccs_workspace 仅作旧配置兼容，始终跟随 generate_dir，避免保存后再加载出现不一致
             "ccs_workspace": self._format_save_path(self.paths.generate_dir),
         })

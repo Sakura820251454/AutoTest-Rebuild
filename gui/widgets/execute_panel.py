@@ -548,9 +548,18 @@ class ExecutePanel(QWidget):
         """
         from pathlib import Path
         
-        # 方法1: 从结果目录获取最新的时间戳
-        result_dir = app_path("results")
-        if result_dir.exists():
+        # 方法1: 从结果目录获取最新的时间戳（配置的导出根目录 + 旧 5_result_dat 兼容）
+        result_dirs = []
+        if self.config is not None:
+            result_dirs.append(self.config.paths.results_dir)
+        else:
+            result_dirs.append(app_path("results"))
+        legacy_dir = app_path("5_result_dat")
+        if legacy_dir.exists():
+            result_dirs.append(legacy_dir)
+        for result_dir in result_dirs:
+            if not result_dir.exists():
+                continue
             # 获取所有时间戳目录
             timestamp_dirs = [d for d in result_dir.iterdir() if d.is_dir()]
             if timestamp_dirs:

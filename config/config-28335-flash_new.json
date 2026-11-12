@@ -6,6 +6,7 @@
     "source_dir": "../2_source_file",
     "generate_dir": "../workspace",
     "result_dir": "../4_result_out",
+    "results_dir": "../results",
     "ccs_workspace": "../workspace"
   },
   "tools": {

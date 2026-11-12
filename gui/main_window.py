@@ -270,7 +270,20 @@ class MainWindow(QMainWindow):
             
             # 更新配置对象的各个属性
             self._update_config_from_dict(config_dict)
-            
+
+            # 导出 dat 目录必须可创建/可写，不做静默接受
+            results_dir = self.config.paths.results_dir
+            try:
+                results_dir.mkdir(parents=True, exist_ok=True)
+                probe = results_dir / ".write_test"
+                probe.write_text("", encoding="utf-8")
+                probe.unlink()
+            except OSError as exc:
+                QMessageBox.warning(
+                    self, "导出 dat 目录不可用",
+                    f"无法创建或写入导出 dat 目录:\n{results_dir}\n\n{exc}")
+                return False
+
             # 确定保存路径
             save_path = path or self.config_path
             if save_path is None:
@@ -305,6 +318,12 @@ class MainWindow(QMainWindow):
             self.config.paths.ccs_workspace = self.config.paths.generate_dir
         if config_dict.get("result_dir"):
             self.config.paths.result_dir = Path(config_dict["result_dir"])
+        results_dir = (config_dict.get("results_dir") or "").strip()
+        if results_dir:
+            results_path = Path(results_dir)
+            if not results_path.is_absolute():
+                results_path = self.config._base_dir / results_path
+            self.config.paths.results_dir = results_path.resolve()
         if config_dict.get("ccs_executable"):
             self.config.paths.ccs_executable = Path(config_dict["ccs_executable"])
         if config_dict.get("ccs_dss"):

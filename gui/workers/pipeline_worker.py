@@ -26,7 +26,7 @@ from src.generator import ProjectGenerator
 from src.builder import ProjectBuilder
 from src.executor import TestExecutor
 from src.logger import setup_logger, get_logger, get_log_dir
-from src.runtime_paths import app_path, to_posix
+from src.runtime_paths import to_posix
 
 
 class GUILogHandler(logging.Handler):
@@ -240,7 +240,8 @@ class PipelineWorker(QThread):
                 {
                     "name": case.name,
                     "out": to_posix(case.out),
-                    "dat_dir": to_posix(case.dat_dir) if case.dat_dir else to_posix(app_path("results") / case.name),
+                    "dat_dir": to_posix(case.dat_dir) if case.dat_dir else to_posix(
+                        self.config.paths.results_dir / self.run_timestamp / case.name),
                     "is_flash": case.is_flash,
                     "segments": [
                         {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}

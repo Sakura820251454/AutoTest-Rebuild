@@ -998,7 +998,9 @@ print("检测完成");
     def _generate_summary_report(self, cases: List[Dict], results: List[TestResult]):
         """生成汇总报告（代理方法）；开启 FLASH 加密时附带每个用例的加密结果"""
         encrypt_states = self.encrypt_status if self.encrypt_flash_dat else None
-        report_generator.generate_summary_report(self.run_timestamp, cases, results, encrypt_states)
+        report_generator.generate_summary_report(
+            self.run_timestamp, cases, results, encrypt_states,
+            results_root=self.config.paths.results_dir)
 
     def _post_process_dat_files(self, cases: List[Dict]):
         """后处理 .dat 文件（删除文件头）"""

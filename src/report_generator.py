@@ -27,7 +27,8 @@ class TestResult:
 
 
 def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List[TestResult],
-                            encrypt_states: Optional[Dict[str, Dict[str, str]]] = None) -> None:
+                            encrypt_states: Optional[Dict[str, Dict[str, str]]] = None,
+                            results_root: Optional[Path] = None) -> None:
     """
     生成汇总报告（CSV + Excel）
 
@@ -37,6 +38,7 @@ def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List
         results: 测试结果列表
         encrypt_states: 勾选 FLASH 加密时传入 {用例名: {"result":..., "text":...}}；
                         为 None 表示未开启加密，表格结构与原来完全一致
+        results_root: 导出 dat 根目录，仅在结果里没有有效 dat_dir 时用于兜底
     """
     if not results:
         return
@@ -48,9 +50,10 @@ def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List
             time_dir = result.dat_dir.parent
             break
 
-    # 如果没有有效的 dat_dir，使用默认路径
+    # 如果没有有效的 dat_dir，使用配置的导出根目录（缺省回落程序目录 results）
     if time_dir is None:
-        time_dir = app_path("results") / run_timestamp
+        root = Path(results_root) if results_root is not None else app_path("results")
+        time_dir = root / run_timestamp
         time_dir.mkdir(parents=True, exist_ok=True)
 
     summary_csv = time_dir / "summary.csv"
