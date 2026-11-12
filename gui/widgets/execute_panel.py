@@ -22,7 +22,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import Config
-from src.runtime_paths import app_path
+from src.runtime_paths import app_path, to_posix
 from .case_table import CaseTable
 from ..workers.pipeline_worker import PipelineWorker
 from ..dialogs.hardware_error_dialog import HardwareErrorDialog
@@ -584,16 +584,14 @@ class ExecutePanel(QWidget):
                     config = json.load(f)
                 cases = config.get("cases", [])
                 if cases:
-                    # 从第一个用例的 dat_dir 提取时间戳
-                    dat_dir = cases[0].get("dat_dir", "")
-                    # dat_dir 格式: results/YYYY-MM-DD-HH-MM/case_name（或绝对路径）
-                    parts = Path(dat_dir).parts
-                    if len(parts) >= 2:
-                        timestamp = parts[1] if parts[0] in ("results", "5_result_dat") else parts[-2]
-                        import re
-                        if re.match(r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}', timestamp):
-                            self.log_message.emit(f"从配置文件恢复时间戳: {timestamp}")
-                            return timestamp
+                    # 从第一个用例的 dat_dir 提取时间戳（正/反斜杠、相对/绝对路径都兼容）
+                    dat_dir = to_posix(cases[0].get("dat_dir", ""))
+                    import re
+                    match = re.search(r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2})", dat_dir)
+                    if match:
+                        timestamp = match.group(1)
+                        self.log_message.emit(f"从配置文件恢复时间戳: {timestamp}")
+                        return timestamp
             except Exception as e:
                 self.log_message.emit(f"从配置文件恢复时间戳失败: {e}")
         

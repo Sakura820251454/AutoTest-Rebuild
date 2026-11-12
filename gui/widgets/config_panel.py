@@ -109,7 +109,7 @@ class ConfigPanel(QWidget):
         path_layout.setSpacing(10)
         
         # 隐藏的路径字段：界面不展示，但加载/保存时原样保留，避免保存后被清空
-        for hidden_key in ("template_dir", "source_dir", "result_dir", "ccs_workspace"):
+        for hidden_key in ("result_dir", "ccs_workspace"):
             selector = PathSelector("dir")
             selector.path_changed.connect(self.on_config_modified)
             self.path_selectors[hidden_key] = selector
@@ -138,6 +138,22 @@ class ConfigPanel(QWidget):
         self.result_dat_label = QLabel(str(app_path("results")))
         self.result_dat_label.setToolTip("测试结果（memory/*.dat、project/、summary.csv）写入此目录")
         path_layout.addWidget(self.result_dat_label, len(path_configs), 1)
+
+        # 模板模式专用字段：manual 模式下隐藏，切换模式时立即刷新
+        self.template_mode_widgets = []
+        template_rows = [
+            ("template_dir", "模板工程目录:"),
+            ("source_dir", "源文件目录:"),
+        ]
+        for offset, (key, label) in enumerate(template_rows):
+            row = len(path_configs) + 1 + offset
+            label_widget = QLabel(label)
+            selector = PathSelector("dir")
+            selector.path_changed.connect(self.on_config_modified)
+            path_layout.addWidget(label_widget, row, 0)
+            path_layout.addWidget(selector, row, 1)
+            self.path_selectors[key] = selector
+            self.template_mode_widgets.extend([label_widget, selector])
         
         content_layout.addWidget(path_group)
         
@@ -176,7 +192,7 @@ class ConfigPanel(QWidget):
         self.generation_mode_combo = QComboBox()
         self.generation_mode_combo.addItems(["template", "manual"])
         self.generation_mode_combo.setToolTip("template: 从模板生成工程\nmanual: 使用手动配置的工程")
-        self.generation_mode_combo.currentTextChanged.connect(self.on_config_modified)
+        self.generation_mode_combo.currentTextChanged.connect(self._on_generation_mode_changed)
         build_layout.addWidget(self.generation_mode_combo, 1, 3)
 
         build_layout.setColumnStretch(1, 1)
@@ -657,6 +673,9 @@ class ConfigPanel(QWidget):
         else:
             self.is_flash_checkbox.setCheckState(Qt.PartiallyChecked)
 
+        # 按当前生成模式刷新模板/源文件目录的可见性
+        self._refresh_template_field_visibility(self.generation_mode_combo.currentText())
+
     def get_config_dict(self) -> Dict[str, Any]:
         """
         从界面获取配置字典
@@ -839,6 +858,17 @@ class ConfigPanel(QWidget):
     def on_config_modified(self):
         """配置修改处理"""
         self.config_changed.emit()
+
+    def _on_generation_mode_changed(self, mode: str):
+        """生成模式切换：立即刷新模板专用字段的可见性"""
+        self._refresh_template_field_visibility(mode)
+        self.on_config_modified()
+
+    def _refresh_template_field_visibility(self, mode: str):
+        """template 模式显示模板/源文件目录，manual 模式隐藏（隐藏时值仍保留）"""
+        visible = (mode or "").strip().lower() == "template"
+        for widget in self.template_mode_widgets:
+            widget.setVisible(visible)
 
     def _on_encrypt_flash_toggled(self, state):
         """加密开关变化：未开启加密时，加密子选项一律禁用"""

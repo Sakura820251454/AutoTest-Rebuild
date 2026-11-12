@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import Config
 from src.hardware_detector import quick_hardware_check
+from src.runtime_paths import to_posix
 
 
 class HardwareChecker(QThread):
@@ -89,7 +90,7 @@ class HardwareChecker(QThread):
         Returns:
             脚本文件路径
         """
-        ccxml_path = str(self.config.paths.ccxml).replace('\\', '/')
+        ccxml_path = to_posix(self.config.paths.ccxml)
         device_name = self.config.test.device
         cpu_name = self.config.test.cpu
         

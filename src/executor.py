@@ -28,13 +28,19 @@ from .exceptions import (
     TestExecutionError,
 )
 from .logger import get_logger, LogContext
-from .runtime_paths import app_path, resource_path
+from .runtime_paths import app_path, resource_path, to_posix, path_key
 from .flash_encrypt import encrypt_flash_dat_file
 from .hardware_detector import quick_hardware_check
 from . import test_config_generator
 from . import report_generator
 
 logger = get_logger(__name__)
+
+
+def _resolve_dat_dir(dat_dir) -> Path:
+    """把用例 dat_dir 统一解析为绝对路径（相对路径按程序目录解析）"""
+    p = Path(dat_dir)
+    return p if p.is_absolute() else app_path(str(p))
 
 
 @dataclass
@@ -421,7 +427,7 @@ class TestExecutor:
         for i, batch in enumerate(batches):
             # 检查该批次的所有用例是否都有成功的结果
             for case in batch:
-                summary_file = Path(case["dat_dir"]) / "summary.csv"
+                summary_file = _resolve_dat_dir(case["dat_dir"]) / "summary.csv"
                 if not summary_file.exists():
                     # 该批次未完成（没有结果文件）
                     logger.info(f"断点续测检测: 批次 {i+1} 用例 {case['name']} 无结果文件，从该批次开始")
@@ -519,7 +525,7 @@ class TestExecutor:
             测试结果，如果没有结果则返回 None
         """
         # 使用绝对路径
-        dat_dir = Path(case["dat_dir"]).resolve()
+        dat_dir = _resolve_dat_dir(case["dat_dir"]).resolve()
         summary_file = dat_dir / "summary.csv"
         
         logger.info(f"尝试读取用例结果: {case['name']} -> {summary_file}")
@@ -545,7 +551,7 @@ class TestExecutor:
                     return TestResult(
                         case_name=case_name,
                         status=status,
-                        dat_dir=Path(case["dat_dir"]),
+                        dat_dir=_resolve_dat_dir(case["dat_dir"]),
                         duration_ms=duration_ms
                     )
         except Exception as e:
@@ -556,7 +562,7 @@ class TestExecutor:
     def _create_output_dirs(self, cases: List[Dict]):
         """创建输出目录"""
         for case in cases:
-            dat_dir = Path(case["dat_dir"])
+            dat_dir = _resolve_dat_dir(case["dat_dir"])
             dat_dir.mkdir(parents=True, exist_ok=True)
     
     def _split_into_batches(self, cases: List[Dict], batch_size: int) -> List[List[Dict]]:
@@ -657,7 +663,7 @@ class TestExecutor:
         Returns:
             JavaScript 脚本内容
         """
-        ccxml_path = str(self.ccxml).replace('\\', '/')
+        ccxml_path = to_posix(self.ccxml)
         device_name = self.device
         cpu_name = self.cpu
         return f'''
@@ -745,11 +751,11 @@ print("检测完成");
         Returns:
             是否成功执行该批次
         """
-        log_file_path = str((log_dir / f"DSS_Batch_{batch[0]['name']}.xml").resolve()).replace("\\", "/")
+        log_file_path = to_posix((log_dir / f"DSS_Batch_{batch[0]['name']}.xml").resolve())
 
         config_json = {
             "global": {
-                "ccxml": global_config["ccxml"],
+                "ccxml": to_posix(global_config["ccxml"]),
                 "device": global_config["device"],
                 "cpu": global_config["cpu"]
             },
@@ -757,12 +763,12 @@ print("检测完成");
             "cases": [
                 {
                     "case_name": case["name"],
-                    "out": case["out"],
+                    "out": to_posix(case["out"]),
                     "timeout": global_config["timeout"],
                     "result_addr": int(global_config["result_addr"], 16),
                     "success_val": int(global_config["success_val"], 16),
                     "error_val": int(global_config["error_val"], 16),
-                    "dat_dir": str(Path(case["dat_dir"]).resolve()).replace("\\", "/"),
+                    "dat_dir": to_posix(_resolve_dat_dir(case["dat_dir"]).resolve()),
                     "is_flash": case.get("is_flash"),  # 可选字段，None表示自动判断
                     "segments": [
                         {
@@ -901,7 +907,7 @@ print("检测完成");
     def _write_case_result(self, case: Dict, status: str):
         """写入单个用例的结果"""
         try:
-            summary_file = Path(case["dat_dir"]) / "summary.csv"
+            summary_file = _resolve_dat_dir(case["dat_dir"]) / "summary.csv"
             summary_file.parent.mkdir(parents=True, exist_ok=True)
             with open(summary_file, "w", encoding="utf-8") as f:
                 f.write(f"{case['name']},{status}\n")
@@ -924,7 +930,7 @@ print("检测完成");
             return results
         
         # 从第一个用例的 dat_dir 获取时间戳目录
-        first_dat_dir = Path(cases[0]["dat_dir"])
+        first_dat_dir = _resolve_dat_dir(cases[0]["dat_dir"])
         time_dir = first_dat_dir.parent
         summary_file = time_dir / "summary.csv"
         
@@ -955,7 +961,7 @@ print("检测完成");
                             dat_dir = None
                             for case in cases:
                                 if case["name"] == case_name:
-                                    dat_dir = Path(case["dat_dir"])
+                                    dat_dir = _resolve_dat_dir(case["dat_dir"])
                                     break
                             if dat_dir is None:
                                 dat_dir = first_dat_dir  # 默认使用第一个用例的目录
@@ -1000,7 +1006,7 @@ print("检测完成");
             export_points = case.get("export_points", [{"when": "after_run", "subdir": "memory"}])
             for ep in export_points:
                 subdir = ep.get("subdir", "memory")
-                memory_dir = Path(case["dat_dir"]) / subdir
+                memory_dir = _resolve_dat_dir(case["dat_dir"]) / subdir
                 if memory_dir.exists():
                     for dat_file in memory_dir.glob("*.dat"):
                         self._remove_first_line_if_header(dat_file)
@@ -1074,9 +1080,7 @@ print("检测完成");
             )
             return False
 
-        dat_dir = Path(case["dat_dir"])
-        if not dat_dir.is_absolute():
-            dat_dir = app_path(str(dat_dir))
+        dat_dir = _resolve_dat_dir(case["dat_dir"])
         dest_dir = dat_dir / "project"
         build_config = getattr(self.config.build, "build_config", "Debug") or "Debug"
 
@@ -1189,9 +1193,7 @@ print("检测完成");
             export_points = case.get("export_points", [{"when": "after_run", "subdir": "memory"}])
             has_flash_seg = any(seg.get("name") == "FLASH" for seg in case.get("segments", []))
             
-            dat_dir = Path(case["dat_dir"])
-            if not dat_dir.is_absolute():
-                dat_dir = app_path(str(dat_dir))
+            dat_dir = _resolve_dat_dir(case["dat_dir"])
             
             ok_count = 0
             fail_text = ""
@@ -1200,7 +1202,7 @@ print("检测完成");
             seen_dirs = set()
             for ep in export_points:
                 subdir = ep.get("subdir", "memory")
-                key = (str(dat_dir), subdir)
+                key = (path_key(dat_dir), subdir)
                 if key in seen_dirs:
                     logger.debug(f"用例 {case_name} 的导出目录 {subdir} 重复，跳过重复加密")
                     continue

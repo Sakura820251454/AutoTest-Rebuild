@@ -21,6 +21,10 @@ from .exceptions import (
     ConfigValidationError,
     ConfigPathError
 )
+from .logger import get_logger
+from .runtime_paths import app_root, path_key, to_posix
+
+logger = get_logger(__name__)
 
 
 DEFAULT_MEMORY_SEGMENTS = [
@@ -308,17 +312,51 @@ class Config:
         else:
             return (self._base_dir / path).resolve()
     
+    def _resolve_workspace_dirs(self, container: Dict) -> tuple:
+        """
+        解析工作区目录（新/旧格式共用）
+
+        规则：
+        1. generate_dir 是唯一真源；
+        2. generate_dir 缺失时回退 ccs_workspace（旧配置兼容）；
+        3. 两者都存在但不一致时以 generate_dir 为准，并把被忽略的值写进日志。
+        """
+        generate_raw = container.get("generate_dir", "")
+        ccs_raw = container.get("ccs_workspace", "")
+
+        generate_dir = self._resolve_path(generate_raw) if generate_raw else None
+        ccs_workspace = self._resolve_path(ccs_raw) if ccs_raw else None
+
+        if generate_dir is None:
+            if ccs_workspace is not None:
+                logger.warning("配置缺少 generate_dir，回退使用 ccs_workspace=%s", ccs_workspace)
+                generate_dir = ccs_workspace
+            else:
+                generate_dir = self._resolve_path("")
+
+        if ccs_workspace is None:
+            ccs_workspace = generate_dir
+        elif path_key(ccs_workspace) != path_key(generate_dir):
+            logger.warning(
+                "已忽略 ccs_workspace=%s（与 generate_dir=%s 不一致，统一以 generate_dir 为准）",
+                ccs_workspace, generate_dir
+            )
+            ccs_workspace = generate_dir
+
+        return generate_dir, ccs_workspace
+
     def _parse_paths_new(self, raw: Dict) -> PathConfig:
         """解析新格式路径配置"""
         paths = raw.get("paths", {})
         tools = raw.get("tools", {})
-        
+        generate_dir, ccs_workspace = self._resolve_workspace_dirs(paths)
+
         return PathConfig(
             template_dir=self._resolve_path(paths.get("template_dir", "")),
             source_dir=self._resolve_path(paths.get("source_dir", "")),
-            generate_dir=self._resolve_path(paths.get("generate_dir", "")),
+            generate_dir=generate_dir,
             result_dir=self._resolve_path(paths.get("result_dir", "")),
-            ccs_workspace=self._resolve_path(paths.get("ccs_workspace", paths.get("generate_dir", ""))),
+            ccs_workspace=ccs_workspace,
             ccs_executable=self._resolve_path(tools.get("ccs_executable", "")),
             ccs_dss=self._resolve_path(tools.get("ccs_dss", "")),
             ccxml=self._resolve_path(tools.get("ccxml", "")),
@@ -326,12 +364,13 @@ class Config:
     
     def _parse_paths_legacy(self, raw: Dict) -> PathConfig:
         """解析旧格式路径配置"""
+        generate_dir, ccs_workspace = self._resolve_workspace_dirs(raw)
         return PathConfig(
             template_dir=self._resolve_path(raw.get("template_dir", "")),
             source_dir=self._resolve_path(raw.get("source_dir", "")),
-            generate_dir=self._resolve_path(raw.get("generate_dir", "")),
+            generate_dir=generate_dir,
             result_dir=self._resolve_path(raw.get("result_dir", "")),
-            ccs_workspace=self._resolve_path(raw.get("ccs_workspace", raw.get("generate_dir", ""))),
+            ccs_workspace=ccs_workspace,
             ccs_executable=self._resolve_path(raw.get("ccs_executable", "")),
             ccs_dss=self._resolve_path(raw.get("ccs_dss", "")),
             ccxml=self._resolve_path(raw.get("ccxml", "")),
@@ -584,7 +623,8 @@ class Config:
             "source_dir": str(self.paths.source_dir),
             "generate_dir": str(self.paths.generate_dir),
             "result_dir": str(self.paths.result_dir),
-            "ccs_workspace": str(self.paths.ccs_workspace),
+            # 工作区单一真源：ccs_workspace 始终跟随 generate_dir
+            "ccs_workspace": str(self.paths.generate_dir),
             "ccs_executable": str(self.paths.ccs_executable),
             "ccs_dss": str(self.paths.ccs_dss),
             "ccxml": str(self.paths.ccxml),
@@ -641,6 +681,29 @@ class Config:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(config_dict, f, ensure_ascii=False, indent=2)
     
+    def _format_save_path(self, path: Union[str, Path]) -> str:
+        """
+        保存配置时的路径格式化
+
+        - 位于程序目录内：写成相对配置文件目录的路径（正斜杠），整体搬迁后仍有效
+        - 程序目录外：保留绝对路径（正斜杠，避免 JSON/JS 中的转义问题）
+        """
+        p = Path(path)
+        if not p.is_absolute():
+            return to_posix(p)
+
+        try:
+            p.resolve().relative_to(app_root())
+        except ValueError:
+            return to_posix(p)
+
+        try:
+            rel = os.path.relpath(str(p.resolve()), str(self._base_dir))
+        except ValueError:
+            # 跨盘符等无法相对化的场景，退回绝对路径
+            return to_posix(p)
+        return to_posix(rel)
+
     def _get_save_dict(self) -> Dict[str, Any]:
         """
         获取用于保存的配置字典
@@ -653,20 +716,21 @@ class Config:
         if "paths" not in config_dict:
             config_dict["paths"] = {}
         config_dict["paths"].update({
-            "template_dir": str(self.paths.template_dir),
-            "source_dir": str(self.paths.source_dir),
-            "generate_dir": str(self.paths.generate_dir),
-            "result_dir": str(self.paths.result_dir),
-            "ccs_workspace": str(self.paths.ccs_workspace),
+            "template_dir": self._format_save_path(self.paths.template_dir),
+            "source_dir": self._format_save_path(self.paths.source_dir),
+            "generate_dir": self._format_save_path(self.paths.generate_dir),
+            "result_dir": self._format_save_path(self.paths.result_dir),
+            # ccs_workspace 仅作旧配置兼容，始终跟随 generate_dir，避免保存后再加载出现不一致
+            "ccs_workspace": self._format_save_path(self.paths.generate_dir),
         })
         
         # 更新 tools 分组
         if "tools" not in config_dict:
             config_dict["tools"] = {}
         config_dict["tools"].update({
-            "ccs_executable": str(self.paths.ccs_executable),
-            "ccs_dss": str(self.paths.ccs_dss),
-            "ccxml": str(self.paths.ccxml),
+            "ccs_executable": self._format_save_path(self.paths.ccs_executable),
+            "ccs_dss": self._format_save_path(self.paths.ccs_dss),
+            "ccxml": self._format_save_path(self.paths.ccxml),
         })
         
         # 更新 build 分组
@@ -738,8 +802,8 @@ class Config:
             config_dict["cases"] = [
                 {
                     "name": c.name,
-                    "out": str(c.out),
-                    "dat_dir": c.dat_dir,
+                    "out": self._format_save_path(c.out),
+                    "dat_dir": to_posix(c.dat_dir),
                     "is_flash": c.is_flash,  # 可选字段，None表示自动判断
                     "segments": [
                         {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}

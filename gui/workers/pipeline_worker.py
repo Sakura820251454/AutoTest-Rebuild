@@ -26,7 +26,7 @@ from src.generator import ProjectGenerator
 from src.builder import ProjectBuilder
 from src.executor import TestExecutor
 from src.logger import setup_logger, get_logger, get_log_dir
-from src.runtime_paths import app_path
+from src.runtime_paths import app_path, to_posix
 
 
 class GUILogHandler(logging.Handler):
@@ -169,7 +169,8 @@ class PipelineWorker(QThread):
                 "source_dir": str(self.config.paths.source_dir),
                 "generate_dir": str(self.config.paths.generate_dir),
                 "result_dir": str(self.config.paths.result_dir),
-                "ccs_workspace": str(self.config.paths.ccs_workspace),
+                # 工作区单一真源：ccs_workspace 始终跟随 generate_dir
+                "ccs_workspace": str(self.config.paths.generate_dir),
             },
 
             # 工具路径配置（新格式）
@@ -238,8 +239,8 @@ class PipelineWorker(QThread):
             "cases": [
                 {
                     "name": case.name,
-                    "out": str(case.out),
-                    "dat_dir": case.dat_dir if case.dat_dir else str(app_path("results") / case.name).replace("\\", "/"),
+                    "out": to_posix(case.out),
+                    "dat_dir": to_posix(case.dat_dir) if case.dat_dir else to_posix(app_path("results") / case.name),
                     "is_flash": case.is_flash,
                     "segments": [
                         {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
@@ -343,13 +344,19 @@ class PipelineWorker(QThread):
             success_count = sum(1 for r in results if r.success)
             total_count = len(results)
 
-            if total_count > 0:
-                self.log_message.emit(f"工程生成完成: {success_count}/{total_count} 成功")
-            else:
-                self.log_message.emit("工程生成完成")
+            if total_count == 0:
+                # 工作区不存在 / 没有工程 / 模板源为空，都不能静默当成“生成完成”
+                workspace = config.paths.generate_dir
+                if not workspace.exists():
+                    self.log_message.emit(f"生成失败：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
+                else:
+                    self.log_message.emit(
+                        f"生成失败：工作区 {workspace} 中没有找到任何有效工程，请检查工作区目录是否配置正确"
+                    )
+                return False
 
-            # 只要有成功的就返回 True（与命令行逻辑一致）
-            return success_count > 0 or total_count == 0
+            self.log_message.emit(f"工程生成完成: {success_count}/{total_count} 成功")
+            return success_count > 0
 
         except Exception as e:
             self.log_message.emit(f"生成失败: {str(e)}")
@@ -412,8 +419,20 @@ class PipelineWorker(QThread):
             builder.on_project_finish = on_project_finish
 
             # 先获取工程总数用于进度计算
+            workspace = config.paths.generate_dir
+            if not workspace.exists():
+                self.log_message.emit(f"构建失败：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
+                return False
+
             projects = builder.find_projects()
             self._build_total = len(projects)
+            if not projects:
+                self.log_message.emit(
+                    f"构建失败：工作区 {workspace} 中没有任何有效工程（未找到含 .project 的子目录），"
+                    f"已中止，避免后续误测旧工程"
+                )
+                self.progress_updated.emit(0, "构建未执行：工作区中没有工程")
+                return False
 
             results = builder.build_all()
 
@@ -421,13 +440,10 @@ class PipelineWorker(QThread):
             success_count = sum(1 for r in results if r.success)
             total_count = len(results)
 
-            if total_count > 0:
-                self.log_message.emit(f"工程构建完成: {success_count}/{total_count} 成功")
-            else:
-                self.log_message.emit("工程构建完成")
+            self.log_message.emit(f"工程构建完成: {success_count}/{total_count} 成功")
 
             # 只要有成功的就返回 True（与命令行逻辑一致）
-            return success_count > 0 or total_count == 0
+            return success_count > 0
 
         except Exception as e:
             self.log_message.emit(f"构建失败: {str(e)}")
@@ -509,15 +525,26 @@ class PipelineWorker(QThread):
             if not config.cases:
                 self.log_message.emit("从工作空间获取用例列表...")
             test_config_path = executor.generate_test_config()
-            if test_config_path and Path(test_config_path).exists():
-                import json
-                with open(test_config_path, "r", encoding="utf-8") as f:
-                    test_config = json.load(f)
-                case_names = [case["name"] for case in test_config.get("cases", [])]
-                self._test_total_cases = len(case_names)
-                if case_names:
-                    self.log_message.emit(f"发现 {len(case_names)} 个用例")
-                    self.case_list_loaded.emit(case_names)
+            if not test_config_path or not Path(test_config_path).exists():
+                # 不能拿旧 full_regr.json 继续跑，否则会无声地测旧工程
+                workspace = config.paths.generate_dir
+                if not workspace.exists():
+                    self.log_message.emit(f"测试中止：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
+                else:
+                    self.log_message.emit(
+                        f"测试中止：工作区 {workspace} 中没有找到任何 .out 文件，请先构建或检查工作区目录"
+                    )
+                self.progress_updated.emit(0, "测试未执行：未找到 .out")
+                return 0
+
+            import json
+            with open(test_config_path, "r", encoding="utf-8") as f:
+                test_config = json.load(f)
+            case_names = [case["name"] for case in test_config.get("cases", [])]
+            self._test_total_cases = len(case_names)
+            if case_names:
+                self.log_message.emit(f"发现 {len(case_names)} 个用例")
+                self.case_list_loaded.emit(case_names)
             
             if self._test_total_cases == 0 and config.cases:
                 self._test_total_cases = len(config.cases)

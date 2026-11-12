@@ -301,10 +301,10 @@ class MainWindow(QMainWindow):
             self.config.paths.source_dir = Path(config_dict["source_dir"])
         if config_dict.get("generate_dir"):
             self.config.paths.generate_dir = Path(config_dict["generate_dir"])
+            # 工作区单一真源：ccs_workspace 始终跟随 generate_dir
+            self.config.paths.ccs_workspace = self.config.paths.generate_dir
         if config_dict.get("result_dir"):
             self.config.paths.result_dir = Path(config_dict["result_dir"])
-        if config_dict.get("ccs_workspace"):
-            self.config.paths.ccs_workspace = Path(config_dict["ccs_workspace"])
         if config_dict.get("ccs_executable"):
             self.config.paths.ccs_executable = Path(config_dict["ccs_executable"])
         if config_dict.get("ccs_dss"):

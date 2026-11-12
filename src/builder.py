@@ -55,7 +55,7 @@ class ProjectBuilder:
     def __init__(self, config: Config):
         self.config = config
         self.ccs_exe = config.paths.ccs_executable
-        self.workspace = config.paths.ccs_workspace
+        self.workspace = config.paths.generate_dir
         self.result_dir = config.paths.result_dir
         self.build_config = config.build.build_config
         self.timeout = config.build.build_timeout

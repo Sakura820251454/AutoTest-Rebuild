@@ -12,7 +12,7 @@ from typing import Optional
 
 from .config import Config, DEFAULT_EXPORT_POINTS, DEFAULT_RESULT_CHECK
 from .logger import get_logger, LogContext
-from .runtime_paths import app_path
+from .runtime_paths import app_path, to_posix
 
 logger = get_logger(__name__)
 
@@ -61,7 +61,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
         if case.dat_dir:
             dat_dir = case.dat_dir
         else:
-            dat_dir = str(app_path("results") / run_timestamp / case.name).replace("\\", "/")
+            dat_dir = to_posix(app_path("results") / run_timestamp / case.name)
 
         # 获取导出时间点配置
         export_points = [
@@ -85,7 +85,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
 
         case_config = {
             "name": case.name,
-            "out": str(case.out).replace("\\", "/"),
+            "out": to_posix(case.out),
             "dat_dir": dat_dir,
             "segments": [
                 {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
@@ -102,7 +102,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
         cases.append(case_config)
 
     test_config = {
-        "ccxml": str(config.paths.ccxml).replace("\\", "/"),
+        "ccxml": to_posix(config.paths.ccxml),
         "device": config.test.device,
         "cpu": config.test.cpu,
         "timeout": config.test.test_timeout,
@@ -134,12 +134,16 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
     Returns:
         生成的配置文件路径，如果没有找到任何 .out 文件则返回 None
     """
-    workspace = config.paths.ccs_workspace
+    workspace = config.paths.generate_dir
+
+    if not workspace.exists():
+        logger.error(f"工作区目录不存在，请检查“工作区目录”配置: {workspace}")
+        return None
 
     out_files = sorted(workspace.rglob("*.out"))
 
     if not out_files:
-        logger.warning(f"工作空间中没有找到 .out 文件: {workspace}")
+        logger.error(f"工作区中没有找到任何 .out 文件（工程未构建？）: {workspace}")
         return None
 
     logger.info(f"找到 {len(out_files)} 个 .out 文件")
@@ -157,7 +161,7 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
     cases = []
     for out_file in out_files:
         case_name = out_file.stem
-        dat_dir = str(app_path("results") / run_timestamp / case_name).replace("\\", "/")
+        dat_dir = to_posix(app_path("results") / run_timestamp / case_name)
 
         # 获取导出时间点配置
         export_points = [
@@ -181,7 +185,7 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
 
         cases.append({
             "name": case_name,
-            "out": str(out_file.resolve()).replace("\\", "/"),
+            "out": to_posix(out_file.resolve()),
             "dat_dir": dat_dir,
             "segments": [
                 {"name": s.name, "addr": s.addr, "len": s.len, "width": s.width, "page": s.page}
@@ -192,7 +196,7 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
         })
 
     test_config = {
-        "ccxml": str(config.paths.ccxml).replace("\\", "/"),
+        "ccxml": to_posix(config.paths.ccxml),
         "device": config.test.device,
         "cpu": config.test.cpu,
         "timeout": config.test.test_timeout,

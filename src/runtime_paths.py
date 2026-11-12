@@ -3,14 +3,25 @@
 运行时路径解析模块
 
 @input sys (frozen / _MEIPASS)
-@output is_frozen(), app_root(), bundle_root(), app_path(), resource_path()
+@output to_posix(), path_key(), is_frozen(), app_root(), bundle_root(), app_path(), resource_path()
 @pos 基础模块，所有可写目录与只读资源的唯一路径入口，兼容源码运行与 PyInstaller 打包运行
 
 一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
 
+import os
 import sys
 from pathlib import Path
+
+
+def to_posix(path) -> str:
+    """转成正斜杠字符串，供 JSON / DSS JavaScript 使用（避免 \\t、\\n 被转义）"""
+    return str(path).replace("\\", "/")
+
+
+def path_key(path) -> str:
+    """路径比较/去重用的规范化键：统一分隔符并忽略 Windows 大小写差异"""
+    return os.path.normcase(os.path.normpath(str(path)))
 
 
 def is_frozen() -> bool:
