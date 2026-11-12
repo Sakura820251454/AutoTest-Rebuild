@@ -169,6 +169,7 @@ class PipelineWorker(QThread):
                 "source_dir": str(self.config.paths.source_dir),
                 "generate_dir": str(self.config.paths.generate_dir),
                 "result_dir": str(self.config.paths.result_dir),
+                "results_dir": str(self.config.paths.results_dir),
                 # 工作区单一真源：ccs_workspace 始终跟随 generate_dir
                 "ccs_workspace": str(self.config.paths.generate_dir),
             },
