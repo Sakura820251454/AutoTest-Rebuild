@@ -195,7 +195,7 @@ class TestExecutor:
             
             self._create_output_dirs(cases)
             
-            log_dir = app_path("6_result_dat_logs") / self.run_timestamp
+            log_dir = app_path("logs") / "dss" / self.run_timestamp
             log_dir.mkdir(parents=True, exist_ok=True)
             
             batches = self._split_into_batches(cases, self.batch_size)
@@ -1246,7 +1246,7 @@ print("检测完成");
         """清理旧日志"""
         import time
         cutoff = time.time() - days * 86400
-        log_root = app_path("6_result_dat_logs")
+        log_root = app_path("logs") / "dss"
         
         if not log_root.exists():
             return

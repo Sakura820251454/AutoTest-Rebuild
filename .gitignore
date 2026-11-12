@@ -37,13 +37,16 @@ logs/
 *.log
 
 # Test results and generated files
-6_result_dat_logs/
+results/
+# 迁移期兼容旧目录（避免历史数据被误提交）
 5_result_dat/
+6_result_dat_logs/
 
 # ================================
 # CCS Projects - Generated Projects
 # ================================
 # Exclude entire generated project directories
+workspace/*/
 3_generate_project/*/
 
 # Keep only template files if they exist in a templates directory

@@ -33,7 +33,7 @@ AutoTest 是一个通用的 **TI C2000 DSP 芯片自动化测试框架**，支�
     └─────────────┘          └─────────────┘          └─────────────┘
          │                        │                        │
          ▼                        ▼                        ▼
-    source/*.{c,asm}        工程/Debug/*.out          5_result_dat/
+    source/*.{c,asm}        工程/Debug/*.out          results/
     + template/                  ↓                        ↓
                             4_result_out/*.out      summary.csv
                                                     summary.xlsx
@@ -129,8 +129,8 @@ generate_dir/
 # 5. 测试编译通过
 
 # 将配置好的工程复制到 generate_dir
-xcopy /E /I "D:\CCS_Workspace\custom_opt_o0" "D:\AutoTest_DEMO\3_generate_project\custom_opt_o0"
-xcopy /E /I "D:\CCS_Workspace\custom_opt_o2" "D:\AutoTest_DEMO\3_generate_project\custom_opt_o2"
+xcopy /E /I "D:\CCS_Workspace\custom_opt_o0" "D:\AutoTest_DEMO\workspace\custom_opt_o0"
+xcopy /E /I "D:\CCS_Workspace\custom_opt_o2" "D:\AutoTest_DEMO\workspace\custom_opt_o2"
 ```
 
 **处理流程**：
@@ -178,7 +178,7 @@ generate_dir/
   "paths": {
     "template_dir": "D:/AutoTest_DEMO/1_project_templete/ccs_insts_test",
     "source_dir": "D:/AutoTest_DEMO/2_source_file",
-    "generate_dir": "D:/AutoTest_DEMO/3_generate_project"
+    "generate_dir": "D:/AutoTest_DEMO/workspace"
   },
   "generation": {
     "generation_mode": "template"
@@ -192,7 +192,7 @@ generate_dir/
   "paths": {
     "template_dir": "D:/AutoTest_DEMO/1_project_templete/ccs_insts_test",
     "source_dir": "D:/AutoTest_DEMO/2_source_file",
-    "generate_dir": "D:/AutoTest_DEMO/3_generate_project"
+    "generate_dir": "D:/AutoTest_DEMO/workspace"
   },
   "generation": {
     "generation_mode": "manual"
@@ -221,8 +221,8 @@ generate_dir/
    ```bash
    # 1. 在 CCS 中手动配置所有工程
    # 2. 将工程复制到 generate_dir
-   xcopy /E /I "D:\CCS_Workspace\project1" "D:\AutoTest_DEMO\3_generate_project\project1"
-   xcopy /E /I "D:\CCS_Workspace\project2" "D:\AutoTest_DEMO\3_generate_project\project2"
+   xcopy /E /I "D:\CCS_Workspace\project1" "D:\AutoTest_DEMO\workspace\project1"
+   xcopy /E /I "D:\CCS_Workspace\project2" "D:\AutoTest_DEMO\workspace\project2"
    
    # 3. 配置为 manual 模式
    # 编辑 config.json: "generation_mode": "manual"
@@ -316,7 +316,7 @@ result_dir/                      # 例如: D:/AutoTest_rebuild/4_result_out
 outs = sorted(workspace.rglob('*.out'))  # 递归查找所有 .out 文件
 for out_file in outs:
     case_name = out_file.stem
-    dat_dir = f'5_result_dat/{timestamp}/{case_name}'
+    dat_dir = f'results/{timestamp}/{case_name}'
     cases.append({
         'name': case_name,
         'out': str(out_file),
@@ -340,7 +340,7 @@ full_regr.json                   # 完整测试配置
     {
       "name": "test_algorithm_c",
       "out": "D:/.../test_algorithm_c.out",
-      "dat_dir": "5_result_dat/2026-03-16-10-30/test_algorithm_c",
+      "dat_dir": "results/2026-03-16-10-30/test_algorithm_c",
       "segments": [...]
     },
     ...
@@ -469,7 +469,7 @@ function runTestCase(testCfg) {
 
 **输出产物**:
 ```
-5_result_dat/                    # 测试数据输出
+results/                    # 测试数据输出
 └── 2026-03-16-10-30/           # 时间戳目录
     ├── summary.csv             # 汇总结果
     │   test_algorithm_c,Success
@@ -485,7 +485,7 @@ function runTestCase(testCfg) {
     │       └── ...
     └── ...
 
-6_result_dat_logs/              # DSS 执行日志
+logs/dss/              # DSS 执行日志
 └── 2026-03-16-10-30/
     ├── console_all.log         # 控制台输出
     └── DSS_Batch_*.xml         # DSS 详细日志
@@ -508,7 +508,7 @@ d:\AutoTest_rebuild/
 │   ├── driver.asm               # 汇编测试代码
 │   └── ...
 │
-├── 3_generate_project/          # 生成的工程目录（已从版本控制移除）
+├── workspace/          # 生成的工程目录（已从版本控制移除）
 │   ├── test_algorithm_c/        # 【TEMPLATE】生成的C工程
 │   ├── test_driver_asm/         # 【TEMPLATE】生成的汇编工程
 │   └── ...
@@ -517,12 +517,12 @@ d:\AutoTest_rebuild/
 │   ├── test_algorithm_c.out
 │   └── ...
 │
-├── 5_result_dat/                # 测试结果目录（已从版本控制移除）
+├── results/                # 测试结果目录（已从版本控制移除）
 │   └── 2026-03-16-10-30/
 │       ├── summary.csv
 │       └── ...
 │
-├── 6_result_dat_logs/           # 日志目录（已从版本控制移除）
+├── logs/dss/           # 日志目录（已从版本控制移除）
 │   └── ...
 │
 ├── config/                      # 配置文件目录
@@ -577,9 +577,9 @@ d:\AutoTest_rebuild/
   "paths": {
     "template_dir": "D:/AutoTest_rebuild/1_project_templete/ccs_insts_test",
     "source_dir": "D:/AutoTest_rebuild/2_source_file",
-    "generate_dir": "D:/AutoTest_rebuild/3_generate_project",
+    "generate_dir": "D:/AutoTest_rebuild/workspace",
     "result_dir": "D:/AutoTest_rebuild/4_result_out",
-    "ccs_workspace": "D:/AutoTest_rebuild/3_generate_project"
+    "ccs_workspace": "D:/AutoTest_rebuild/workspace"
   },
   
   "tools": {
@@ -689,7 +689,7 @@ d:\AutoTest_rebuild/
          ▼
 ┌─────────────────┐     ┌─────────────────┐
 │ 步骤4: 测试执行  │────→│ 输出: 测试结果   │
-│ (executor.py)    │     │ 5_result_dat/*  │
+│ (executor.py)    │     │ results/*  │
 │                 │     │ summary.csv     │
 │                 │     │ summary.xlsx    │
 └────────┬────────┘     └─────────────────┘
@@ -722,7 +722,7 @@ d:\AutoTest_rebuild/
 ```
 logs/YYYY-MM-DD/autotest.log    # 主日志
 logs/YYYY-MM-DD/*.log           # 各模块日志
-6_result_dat_logs/YYYY-MM-DD-HH-MM/console_all.log  # DSS 控制台输出（UTF-8 BOM编码）
+logs/dss/YYYY-MM-DD-HH-MM/console_all.log  # DSS 控制台输出（UTF-8 BOM编码）
 ```
 
 ---

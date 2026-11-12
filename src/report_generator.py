@@ -50,7 +50,7 @@ def generate_summary_report(run_timestamp: str, cases: List[Dict], results: List
 
     # 如果没有有效的 dat_dir，使用默认路径
     if time_dir is None:
-        time_dir = app_path("5_result_dat") / run_timestamp
+        time_dir = app_path("results") / run_timestamp
         time_dir.mkdir(parents=True, exist_ok=True)
 
     summary_csv = time_dir / "summary.csv"

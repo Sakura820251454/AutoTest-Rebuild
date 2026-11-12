@@ -61,7 +61,7 @@ def _generate_from_cases(config: Config, run_timestamp: str, output_path: Option
         if case.dat_dir:
             dat_dir = case.dat_dir
         else:
-            dat_dir = str(app_path("5_result_dat") / run_timestamp / case.name).replace("\\", "/")
+            dat_dir = str(app_path("results") / run_timestamp / case.name).replace("\\", "/")
 
         # 获取导出时间点配置
         export_points = [
@@ -157,7 +157,7 @@ def _generate_from_workspace(config: Config, run_timestamp: str, output_path: Op
     cases = []
     for out_file in out_files:
         case_name = out_file.stem
-        dat_dir = str(app_path("5_result_dat") / run_timestamp / case_name).replace("\\", "/")
+        dat_dir = str(app_path("results") / run_timestamp / case_name).replace("\\", "/")
 
         # 获取导出时间点配置
         export_points = [

@@ -4,9 +4,9 @@
     "_comment": "路径配置 - 支持绝对路径和相对路径（相对于配置文件所在目录）",
     "template_dir": "../1_project_templete\\ccs_insts_test",
     "source_dir": "../2_source_file",
-    "generate_dir": "../3_generate_project",
+    "generate_dir": "../workspace",
     "result_dir": "../4_result_out",
-    "ccs_workspace": "../3_generate_project"
+    "ccs_workspace": "../workspace"
   },
   "tools": {
     "_comment": "工具路径配置",

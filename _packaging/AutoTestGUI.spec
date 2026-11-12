@@ -3,7 +3,7 @@
 PyInstaller 打包描述（GUI 单入口，onedir + 无控制台）
 
 @input run_gui.py（唯一入口）、templates/（随包兜底资源）
-@output dist/AutoTestGUI/AutoTestGUI.exe 及 _internal/
+@output dist/AutoTestGUI/AutoTestGUI.exe 及 runtime/
 @pos 构建脚本，只在打包时使用，不参与运行时
 
 一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
@@ -68,6 +68,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
+    contents_directory="runtime",
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

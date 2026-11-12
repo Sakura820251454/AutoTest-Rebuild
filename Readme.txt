@@ -1,9 +1,9 @@
 1) 1_project_templete 此目录下放置 模板工程，模板工程内需将 原始的激励文件删除
 2) 2_source_file           此目录下放置 原始激励文件
-3) 3_generate_project 此目录下为 根据模板工程和原始激励文件生成的ccs工程，并进行自动import和build
+3) workspace 此目录下为 根据模板工程和原始激励文件生成的ccs工程，并进行自动import和build
 4) 4_result_out           此目录下为遍历工程后的.out文件
-5) 5_result_dat           此目录下为运行工程后导出的memory文件
-6) 6_result_dat_logs   此目录下存放运行工程和到处memory的log文件
+5) results           此目录下为运行工程后导出的memory文件
+6) logs/dss   此目录下存放运行工程和到处memory的log文件
 7) config.json            此文件需进行单独配置
 8) run.bat                  此文件为一键自动化运行脚本集合
 
@@ -11,11 +11,11 @@ usage：
 1. 修改config.json文件，以下为详细说明
   "template_dir"      : "E:/yuwei_work/ti_c2000/280039c/auto_test_v2_251011/1_project_templete/TEST_Fix_ALLINS2",   // 需修改，模板工程路径
   "source_dir"          : "E:/yuwei_work/ti_c2000/280039c/auto_test_v2_251011/2_source_file",                                        // 需修改，原始激励文件路径
-  "generate_dir"      : "E:/yuwei_work/ti_c2000/280039c/auto_test_v2_251011/3_generate_project",                               // 需修改，产生ccs工程路径
+  "generate_dir"      : "E:/yuwei_work/ti_c2000/280039c/auto_test_v2_251011/workspace",                               // 需修改，产生ccs工程路径
   "result_dir"           : "E:/yuwei_work/ti_c2000/280039c/auto_test_v2_251011/4_result_out",                                          // 需修改，编译后生成的所有.out文件
   "ccs_executable"  : "E:/ti/ti_software/12.8/ccs/eclipse/eclipsec.exe",                                                                           // 需修改，ccs的eclipse的安装路径
   "ccs_dss"              : "E:/ti/ti_software/12.8/ccs/ccs_base/scripting/bin/dss.bat",                                                          // 需修改，ccs的debug模块的路径
-  "ccs_workspace"  : "E:/yuwei_work/ti_c2000/280039c/auto_test_v2_251011/3_generate_project",                               // 需修改，ccs的workspace，可根据修改进行修改
+  "ccs_workspace"  : "E:/yuwei_work/ti_c2000/280039c/auto_test_v2_251011/workspace",                               // 需修改，ccs的workspace，可根据修改进行修改
   "ccxml"                : "C:/Users/Administrator/ti/CCSTargetConfigurations/280039c.ccxml",                                         // 需修改，ccs的launch文件路径
   "build_config"      : "Debug",
   "do_generate"     : true,           // 根据需要，是否根据激励文件生成工程
@@ -30,7 +30,7 @@ usage：
     {
       "name"   : "xxx",    // 无需修改
       "out"    : "E:/xxx/xxx.out",     // 无需修改
-      "dat_dir": "5_result_dat/xxx",     // 无需修改
+      "dat_dir": "results/xxx",     // 无需修改
       "segments": [
         {"name": "M0" ,  "addr": "0x0000", "len": "0x400" , "width": 1},         // 根据需要进行修改，   width 1-16bit  // 目前导出的memory文件为，run完导出的文件
         {"name": "M1" ,  "addr": "0x0400", "len": "0x400" , "width": 1},
@@ -113,7 +113,7 @@ Flash 项目配置说明：
    - 每个源文件将生成一个独立的测试工程
 
 3. 自动生成过程
-   - 从模板工程复制整个目录到 3_generate_project
+   - 从模板工程复制整个目录到 workspace
    - 复制源文件到新工程目录
    - 自动替换所有配置文件中的工程名：
      * .project, .cproject, .cdtbuild, .cdtproject

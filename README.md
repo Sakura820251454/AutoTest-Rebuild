@@ -119,9 +119,9 @@ pip install numpy pandas openpyxl
   "paths": {
     "template_dir": "D:/AutoTest_DEMO/1_project_templete/ccs_insts_test",
     "source_dir": "D:/AutoTest_DEMO/2_source_file",
-    "generate_dir": "D:/AutoTest_DEMO/3_generate_project",
+    "generate_dir": "D:/AutoTest_DEMO/workspace",
     "result_dir": "D:/AutoTest_DEMO/4_result_out",
-    "ccs_workspace": "D:/AutoTest_DEMO/3_generate_project"
+    "ccs_workspace": "D:/AutoTest_DEMO/workspace"
   },
   "tools": {
     "ccs_executable": "C:/ti/ccs1210/ccs/eclipse/eclipsec.exe",
@@ -328,12 +328,13 @@ python run_gui.py --install-deps
 ### 目录结构
 
 ```
-5_result_dat/                   # 测试数据输出
+results/                   # 测试数据输出
 └── 2026-03-16-10-30/          # 时间戳目录
     ├── summary.csv            # 汇总结果
     ├── summary.xlsx           # 彩色 Excel 报告
     ├── FASTRTS_atan_f32/      # 各用例结果
     │   ├── summary.csv
+    │   ├── project/              # 原始工程副本（随 dat 一起交付/备份）
     │   └── memory/
     │       ├── M0.dat
     │       ├── M1.dat
@@ -345,7 +346,7 @@ logs/                           # 日志输出
     ├── autotest.log           # 主日志
     └── ...
 
-6_result_dat_logs/              # DSS 执行日志
+logs/dss/              # DSS 执行日志
 └── 2026-03-16-10-30/
     ├── console_all.log        # 控制台输出
     └── DSS_*.xml              # DSS 日志
@@ -403,7 +404,7 @@ FASTRTS_sin_f32,Error
 cat logs/2026-03-16/autotest.log
 
 # 查看 DSS 执行日志
-cat 6_result_dat_logs/2026-03-16-10-30/console_all.log
+cat logs/dss/2026-03-16-10-30/console_all.log
 ```
 
 ***

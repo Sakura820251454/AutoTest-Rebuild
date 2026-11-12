@@ -20,7 +20,7 @@ def is_frozen() -> bool:
 
 def app_root() -> Path:
     """
-    程序目录，同时是所有数据目录（logs/5_result_dat/6_result_dat_logs/full_regr.json 等）的根
+    程序目录，同时是所有数据目录（logs/workspace/results/full_regr.json 等）的根
 
     - 源码模式：项目根目录
     - 打包模式：exe 所在目录
@@ -35,7 +35,7 @@ def bundle_root() -> Path:
     打包资源根目录
 
     - 源码模式：与 app_root 相同
-    - 打包模式：sys._MEIPASS（onedir 下即 _internal）
+    - 打包模式：sys._MEIPASS（onedir 下即 runtime）
     """
     if is_frozen():
         return Path(getattr(sys, "_MEIPASS", app_root()))

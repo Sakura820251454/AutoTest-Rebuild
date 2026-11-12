@@ -539,8 +539,8 @@ class ExecutePanel(QWidget):
         从已有的结果目录恢复时间戳
         
         在断点续测时，如果时间戳丢失，尝试从以下位置恢复：
-        1. 已有的结果目录 (5_result_dat)
-        2. 已有的日志目录 (6_result_dat_logs)
+        1. 已有的结果目录 (results)
+        2. 已有的日志目录 (logs/dss)
         3. full_regr.json 配置文件
         
         Returns:
@@ -549,7 +549,7 @@ class ExecutePanel(QWidget):
         from pathlib import Path
         
         # 方法1: 从结果目录获取最新的时间戳
-        result_dir = app_path("5_result_dat")
+        result_dir = app_path("results")
         if result_dir.exists():
             # 获取所有时间戳目录
             timestamp_dirs = [d for d in result_dir.iterdir() if d.is_dir()]
@@ -564,7 +564,7 @@ class ExecutePanel(QWidget):
                     return timestamp
         
         # 方法2: 从日志目录获取最新的时间戳
-        log_dir = app_path("6_result_dat_logs")
+        log_dir = app_path("logs") / "dss"
         if log_dir.exists():
             timestamp_dirs = [d for d in log_dir.iterdir() if d.is_dir()]
             if timestamp_dirs:
@@ -586,10 +586,10 @@ class ExecutePanel(QWidget):
                 if cases:
                     # 从第一个用例的 dat_dir 提取时间戳
                     dat_dir = cases[0].get("dat_dir", "")
-                    # dat_dir 格式: 5_result_dat/YYYY-MM-DD-HH-MM/case_name
+                    # dat_dir 格式: results/YYYY-MM-DD-HH-MM/case_name（或绝对路径）
                     parts = Path(dat_dir).parts
                     if len(parts) >= 2:
-                        timestamp = parts[1] if parts[0] == "5_result_dat" else parts[-2]
+                        timestamp = parts[1] if parts[0] in ("results", "5_result_dat") else parts[-2]
                         import re
                         if re.match(r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}', timestamp):
                             self.log_message.emit(f"从配置文件恢复时间戳: {timestamp}")

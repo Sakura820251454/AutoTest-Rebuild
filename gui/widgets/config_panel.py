@@ -22,6 +22,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import Config, ExportPoint, DEFAULT_EXPORT_POINTS
+from src.runtime_paths import app_path
 from .path_selector import PathSelector
 
 # 内存导出格式ID映射表 (CCS 12.1.0)
@@ -107,13 +108,15 @@ class ConfigPanel(QWidget):
         path_layout = QGridLayout(path_group)
         path_layout.setSpacing(10)
         
-        # 路径配置项
+        # 隐藏的路径字段：界面不展示，但加载/保存时原样保留，避免保存后被清空
+        for hidden_key in ("template_dir", "source_dir", "result_dir", "ccs_workspace"):
+            selector = PathSelector("dir")
+            selector.path_changed.connect(self.on_config_modified)
+            self.path_selectors[hidden_key] = selector
+
+        # 路径配置项（仅展示日常需要的字段）
         path_configs = [
-            ("template_dir", "模板工程目录:", "dir"),
-            ("source_dir", "源文件目录:", "dir"),
-            ("generate_dir", "工程生成目录:", "dir"),
-            ("result_dir", "结果输出目录:", "dir"),
-            ("ccs_workspace", "CCS 工作区:", "dir"),
+            ("generate_dir", "工作区目录:", "dir"),
             ("ccs_executable", "CCS 可执行文件:", "file", "可执行文件 (*.exe);;所有文件 (*.*)"),
             ("ccs_dss", "DSS 执行器:", "file", "批处理文件 (*.bat);;所有文件 (*.*)"),
             ("ccxml", "CCXML 文件:", "file", "CCXML 文件 (*.ccxml);;所有文件 (*.*)"),
@@ -129,6 +132,12 @@ class ConfigPanel(QWidget):
             selector.path_changed.connect(self.on_config_modified)
             path_layout.addWidget(selector, i, 1)
             self.path_selectors[key] = selector
+
+        # 导出 dat 目录：固定落在程序目录下，只做只读展示
+        path_layout.addWidget(QLabel("导出 dat 目录:"), len(path_configs), 0)
+        self.result_dat_label = QLabel(str(app_path("results")))
+        self.result_dat_label.setToolTip("测试结果（memory/*.dat、project/、summary.csv）写入此目录")
+        path_layout.addWidget(self.result_dat_label, len(path_configs), 1)
         
         content_layout.addWidget(path_group)
         
@@ -232,7 +241,7 @@ class ConfigPanel(QWidget):
         self.copy_project_check.setChecked(True)
         self.copy_project_check.setToolTip(
             "勾选后，每个用例导出结束会把原始工程复制到\n"
-            "5_result_dat/<时间戳>/<用例名>/project/，便于工程与 dat 一起传给软仿环境。\n"
+            "results/<时间戳>/<用例名>/project/，便于工程与 dat 一起传给软仿环境。\n"
             "自动过滤 .obj/.d/.mk 等编译中间文件；复制失败只记警告，不影响测试结果。"
         )
         self.copy_project_check.stateChanged.connect(self.on_config_modified)
@@ -562,6 +571,7 @@ class ConfigPanel(QWidget):
         self.path_selectors["ccs_executable"].set_path(str(config.paths.ccs_executable))
         self.path_selectors["ccs_dss"].set_path(str(config.paths.ccs_dss))
         self.path_selectors["ccxml"].set_path(str(config.paths.ccxml))
+        self.result_dat_label.setText(str(app_path("results")))
         
         # 加载构建设置
         self.build_config_combo.setCurrentText(config.build.build_config)
@@ -755,7 +765,7 @@ class ConfigPanel(QWidget):
         
         # 检查必填路径
         required_paths = [
-            ("generate_dir", "工程生成目录"),
+            ("generate_dir", "工作区目录"),
             ("ccs_executable", "CCS 可执行文件"),
             ("ccs_dss", "DSS 执行器"),
         ]
