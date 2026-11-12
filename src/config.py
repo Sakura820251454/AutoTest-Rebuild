@@ -58,6 +58,7 @@ CONFIG_DEFAULTS = {
     "retry_delay": 10,
     "encrypt_flash_dat": False,
     "flash_encrypt_verify": False,
+    "copy_project": True,
 }
 
 
@@ -126,6 +127,7 @@ class TestConfig:
     retry_delay: int = 10          # 重试前等待秒数
     encrypt_flash_dat: bool = False  # 导出后是否加密 FLASH 段 dat（软仿环境需要）
     flash_encrypt_verify: bool = False  # 加密后是否回读校验（对应脚本 --verify，耗时翻倍）
+    copy_project: bool = True  # 导出后是否把原始工程复制到结果目录（随 dat 一起交付/备份）
 
 
 @dataclass
@@ -373,6 +375,7 @@ class Config:
             retry_delay=test.get("retry_delay", CONFIG_DEFAULTS["retry_delay"]),
             encrypt_flash_dat=bool(test.get("encrypt_flash_dat", CONFIG_DEFAULTS["encrypt_flash_dat"])),
             flash_encrypt_verify=bool(test.get("flash_encrypt_verify", CONFIG_DEFAULTS["flash_encrypt_verify"])),
+            copy_project=bool(test.get("copy_project", CONFIG_DEFAULTS["copy_project"])),
         )
     
     def _parse_test_config_legacy(self, raw: Dict) -> TestConfig:
@@ -391,6 +394,7 @@ class Config:
             retry_delay=raw.get("retry_delay", CONFIG_DEFAULTS["retry_delay"]),
             encrypt_flash_dat=bool(raw.get("encrypt_flash_dat", CONFIG_DEFAULTS["encrypt_flash_dat"])),
             flash_encrypt_verify=bool(raw.get("flash_encrypt_verify", CONFIG_DEFAULTS["flash_encrypt_verify"])),
+            copy_project=bool(raw.get("copy_project", CONFIG_DEFAULTS["copy_project"])),
         )
     
     def _parse_memory_segments_new(self, raw: Dict) -> List[MemorySegment]:
@@ -693,6 +697,7 @@ class Config:
             "retry_delay": self.test.retry_delay,
             "encrypt_flash_dat": self.test.encrypt_flash_dat,
             "flash_encrypt_verify": self.test.flash_encrypt_verify,
+            "copy_project": self.test.copy_project,
         })
         
         # 更新 generation 分组

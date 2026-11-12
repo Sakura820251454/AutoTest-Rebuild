@@ -74,6 +74,7 @@ class TestExecutor:
         self.retry_delay = config.test.retry_delay
         self.encrypt_flash_dat = bool(getattr(config.test, "encrypt_flash_dat", False))
         self.encrypt_verify = bool(getattr(config.test, "flash_encrypt_verify", False))
+        self.copy_project = bool(getattr(config.test, "copy_project", True))
         self.encrypt_failures: List[str] = []
         # 用例名 -> {"result": success/failed/skip, "text": 表格里显示的文字}
         self.encrypt_status: Dict[str, Dict[str, str]] = {}
@@ -386,6 +387,9 @@ class TestExecutor:
                     sorted_results.append(case_name_to_result[case["name"]])
             
             self._post_process_dat_files(cases)
+
+            # 工程复制：结果已写完、加密之前，每个用例只拷一次，便于工程与 dat 一起交付
+            self._copy_case_projects(cases)
 
             if self.encrypt_flash_dat:
                 self._encrypt_flash_dats(cases)
@@ -1000,6 +1004,112 @@ print("检测完成");
                 if memory_dir.exists():
                     for dat_file in memory_dir.glob("*.dat"):
                         self._remove_first_line_if_header(dat_file)
+
+    # 工程复制时保留的文件：源码、链接文件、库与说明文件（工程文件单独按文件名判断）
+    _PROJECT_COPY_SUFFIXES = {".cmd", ".c", ".h", ".asm", ".lib", ".txt"}
+
+    def _copy_case_projects(self, cases: List[Dict]):
+        """把每个用例的原始工程复制到 <用例结果目录>/project/（每个用例只做一次）"""
+        if not self.copy_project:
+            return
+        for case in cases:
+            self._copy_case_project(case)
+
+    def _resolve_project_root(self, case: Dict) -> Optional[Path]:
+        """
+        定位用例对应的原始工程根：
+        1) out 形如 <工作区>/<工程名>/<构建配置>/<工程名>.out，取上两级并用 .project 校验
+        2) 回退到 config.paths.generate_dir / 用例名
+        """
+        out = case.get("out")
+        if out:
+            out_path = Path(out)
+            if not out_path.is_absolute():
+                out_path = app_path(str(out))
+            root = out_path.parent.parent
+            if (root / ".project").exists():
+                return root
+
+        candidate = Path(self.config.paths.generate_dir) / case.get("name", "")
+        if (candidate / ".project").exists():
+            return candidate
+        return None
+
+    def _should_copy_project_file(self, rel: Path, build_config: str) -> bool:
+        """按相对路径判断工程文件是否需要复制（过滤编译中间产物）"""
+        parts = rel.parts
+        lowered = [p.lower() for p in parts]
+        if ".metadata" in lowered or ".git" in lowered:
+            return False
+
+        suffix = rel.suffix.lower()
+        # 编译中间产物一律不复制
+        if suffix in (".obj", ".d", ".mk", ".opt", ".prefs"):
+            return False
+
+        if parts[0] == ".settings":
+            return True
+        # .project/.cproject/.ccsproject 这类点文件没有 suffix，必须按文件名判断
+        if rel.name.lower() in (".project", ".cproject", ".ccsproject"):
+            return True
+        if suffix in self._PROJECT_COPY_SUFFIXES:
+            return True
+        # 只带构建目录下的最终产物
+        if suffix in (".out", ".map") and len(parts) > 1 and lowered[0] == build_config.lower():
+            return True
+        return False
+
+    def _copy_case_project(self, case: Dict) -> bool:
+        """
+        复制单个用例的原始工程到 <dat_dir>/project/。
+
+        失败只记 warning，不改变测试结论，也不影响后续 FLASH 加密；
+        目标目录先清空再复制，保证重跑同一时间戳时不会残留上一次的旧文件。
+        """
+        case_name = case.get("name", "")
+        project_root = self._resolve_project_root(case)
+        if project_root is None:
+            logger.warning(
+                f"用例 {case_name} 未找到原始工程，跳过工程复制（out={case.get('out')}）"
+            )
+            return False
+
+        dat_dir = Path(case["dat_dir"])
+        if not dat_dir.is_absolute():
+            dat_dir = app_path(str(dat_dir))
+        dest_dir = dat_dir / "project"
+        build_config = getattr(self.config.build, "build_config", "Debug") or "Debug"
+
+        try:
+            if dest_dir.exists():
+                shutil.rmtree(dest_dir)
+
+            copied = 0
+            total_bytes = 0
+            for src in project_root.rglob("*"):
+                if not src.is_file():
+                    continue
+                rel = src.relative_to(project_root)
+                if not self._should_copy_project_file(rel, build_config):
+                    continue
+                target = dest_dir / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, target)
+                copied += 1
+                total_bytes += src.stat().st_size
+
+            if copied == 0:
+                logger.warning(f"用例 {case_name} 工程目录无可复制文件，跳过工程复制: {project_root}")
+                return False
+
+            logger.info(
+                f"用例 {case_name} 工程已复制: {copied} 个文件 / {total_bytes / 1024 / 1024:.2f} MB -> {dest_dir}"
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"用例 {case_name} 工程复制失败（不影响测试结果）: {e}")
+            return False
+
     
     def _remove_first_line_if_header(self, file_path: Path):
         """

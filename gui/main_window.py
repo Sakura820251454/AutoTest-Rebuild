@@ -346,6 +346,8 @@ class MainWindow(QMainWindow):
             self.config.test.encrypt_flash_dat = config_dict["encrypt_flash_dat"]
         if "flash_encrypt_verify" in config_dict:
             self.config.test.flash_encrypt_verify = config_dict["flash_encrypt_verify"]
+        if "copy_project" in config_dict:
+            self.config.test.copy_project = config_dict["copy_project"]
         
         # 更新内存段配置
         if config_dict.get("memory_segments"):

@@ -208,6 +208,7 @@ class PipelineWorker(QThread):
                 "retry_delay": self.config.test.retry_delay,
                 "encrypt_flash_dat": self.config.test.encrypt_flash_dat,
                 "flash_encrypt_verify": self.config.test.flash_encrypt_verify,
+                "copy_project": self.config.test.copy_project,
                 "result_check": {
                     "method": self.config.result_check.method,
                     "success_label": self.config.result_check.success_label,

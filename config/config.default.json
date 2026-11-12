@@ -36,6 +36,7 @@
     "device": "Texas Instruments XDS100v2 USB Debug Probe_0",
     "cpu": "C28xx",
     "do_test": true,
+    "copy_project": true,
     "result_check": {
       "method": "memory",
       "success_label": "Right",

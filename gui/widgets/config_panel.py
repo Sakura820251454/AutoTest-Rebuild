@@ -226,6 +226,17 @@ class ConfigPanel(QWidget):
         self.retry_delay_spin.setValue(10)
         self.retry_delay_spin.valueChanged.connect(self.on_config_modified)
         test_layout.addWidget(self.retry_delay_spin, 4, 1)
+
+        # 工程复制（导出后把原始工程一起放进结果目录）
+        self.copy_project_check = QCheckBox("导出后复制原始工程")
+        self.copy_project_check.setChecked(True)
+        self.copy_project_check.setToolTip(
+            "勾选后，每个用例导出结束会把原始工程复制到\n"
+            "5_result_dat/<时间戳>/<用例名>/project/，便于工程与 dat 一起传给软仿环境。\n"
+            "自动过滤 .obj/.d/.mk 等编译中间文件；复制失败只记警告，不影响测试结果。"
+        )
+        self.copy_project_check.stateChanged.connect(self.on_config_modified)
+        test_layout.addWidget(self.copy_project_check, 5, 0, 1, 2)
         
         # 设备名称
         test_layout.addWidget(QLabel("设备名称:"), 1, 0)
@@ -571,6 +582,7 @@ class ConfigPanel(QWidget):
         self.retry_delay_spin.setValue(config.test.retry_delay)
         self.encrypt_flash_checkbox.setChecked(bool(getattr(config.test, "encrypt_flash_dat", False)))
         self.flash_verify_checkbox.setChecked(bool(getattr(config.test, "flash_encrypt_verify", False)))
+        self.copy_project_check.setChecked(bool(getattr(config.test, "copy_project", True)))
         self.flash_verify_checkbox.setEnabled(self.encrypt_flash_checkbox.isChecked())
 
         # 加载结果判断配置
@@ -673,6 +685,7 @@ class ConfigPanel(QWidget):
             "retry_delay": self.retry_delay_spin.value(),
             "encrypt_flash_dat": self.encrypt_flash_checkbox.isChecked(),
             "flash_encrypt_verify": self.flash_verify_checkbox.isChecked(),
+            "copy_project": self.copy_project_check.isChecked(),
             
             # 内存段配置
             "memory_segments": {
