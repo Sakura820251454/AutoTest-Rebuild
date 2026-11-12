@@ -523,16 +523,22 @@ class Config:
         cases = []
         if "cases" in raw:
             for case_data in raw["cases"]:
-                segments = [
-                    MemorySegment(
-                        name=s["name"],
-                        addr=s["addr"],
-                        len=s["len"],
-                        width=s.get("width", 15),
-                        page=s.get("page", 0)
-                    )
-                    for s in case_data.get("segments", self.memory_segments)
-                ]
+                # 用例未写 segments 时沿用全局 memory_segments（此时已是 MemorySegment 对象列表）；
+                # 只有配置里显式写了字典列表才需要转换，避免对象被当成字典下标取值
+                segments_src = case_data.get("segments", None)
+                if segments_src is None:
+                    segments = list(self.memory_segments)
+                else:
+                    segments = [
+                        s if isinstance(s, MemorySegment) else MemorySegment(
+                            name=s["name"],
+                            addr=s["addr"],
+                            len=s["len"],
+                            width=s.get("width", 15),
+                            page=s.get("page", 0)
+                        )
+                        for s in segments_src
+                    ]
                 # 解析导出时间点配置
                 export_points_data = case_data.get("export_points", None)
                 if export_points_data is not None:
