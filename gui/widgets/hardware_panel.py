@@ -3,9 +3,16 @@
 """
 硬件检测面板
 
-用于检测硬件连接状态
+用于检测硬件连接状态；检测过程与结果同步写入日志页
+
+@input Config
+@output check_completed/log_entry 信号
+@pos “硬件检测”标签页，负责仿真器/目标板连接检测与可读错误提示
+
+一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
 
+import html
 import sys
 from pathlib import Path
 from typing import Optional
@@ -20,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import Config
 from .status_indicator import StatusIndicator
+from ..utils.error_messages import format_error
+from ..utils.message_boxes import warning
 from ..workers.hardware_checker import HardwareChecker
 
 
@@ -27,12 +36,15 @@ class HardwarePanel(QWidget):
     """硬件检测面板"""
     
     check_completed = pyqtSignal(bool, str)  # 检测完成信号(成功/失败, 消息)
+    log_entry = pyqtSignal(str, str)  # (消息, 级别)
     
     def __init__(self, parent=None):
         super().__init__(parent)
         
         self.config: Optional[Config] = None
         self.checker: Optional[HardwareChecker] = None
+        self._config_available: bool = False
+        self._no_config_reason: str = "尚未加载配置"
         
         self._setup_ui()
     
@@ -89,6 +101,8 @@ class HardwarePanel(QWidget):
         
         # 添加弹性空间
         layout.addStretch()
+
+        self._refresh_check_btn()
     
     def set_config(self, config: Config):
         """
@@ -98,37 +112,58 @@ class HardwarePanel(QWidget):
             config: 配置对象
         """
         self.config = config
+        self._config_available = True
+        self._refresh_check_btn()
         
-        # 更新配置信息显示
+        # 更新配置信息显示（路径做 HTML 转义，避免 & 等字符破坏显示）
         info_text = f"""
-<b>CCXML 文件:</b> {config.paths.ccxml}<br>
-<b>设备名称:</b> {config.test.device}<br>
-<b>CPU 名称:</b> {config.test.cpu}<br>
-<b>DSS 执行器:</b> {config.paths.ccs_dss}
+<b>CCXML 文件:</b> {html.escape(str(config.paths.ccxml))}<br>
+<b>设备名称:</b> {html.escape(str(config.test.device))}<br>
+<b>CPU 名称:</b> {html.escape(str(config.test.cpu))}<br>
+<b>DSS 执行器:</b> {html.escape(str(config.paths.ccs_dss))}
         """.strip()
         self.config_info_label.setText(info_text)
+
+    def set_config_available(self, available: bool, reason: str = ""):
+        """配置是否可用：不可用时禁用“开始检测”并用 tooltip 说明原因"""
+        self._config_available = bool(available)
+        if reason:
+            self._no_config_reason = reason
+        self._refresh_check_btn()
+
+    def _refresh_check_btn(self):
+        """按配置可用性与检测状态刷新按钮"""
+        checking = bool(self.checker and self.checker.isRunning())
+        self.check_btn.setEnabled(self._config_available and not checking)
+        self.check_btn.setToolTip("" if self._config_available else self._no_config_reason)
     
     def start_check(self):
         """开始检测"""
         if self.config is None:
-            QMessageBox.warning(self, "警告", "请先加载配置文件")
+            message = format_error(
+                "尚未加载配置",
+                action="请先在“配置”页选择目录并保存，或通过“文件 → 打开配置...”加载")
+            self.log_entry.emit(message.replace("\n", " | "), "WARNING")
+            warning(self, "无法检测硬件", message)
             return
+
+        self.log_entry.emit("开始检测硬件连接", "INFO")
         
         # 检查必要配置
         if not self.config.paths.ccxml.exists():
-            QMessageBox.warning(
-                self,
-                "配置错误",
-                f"CCXML 文件不存在:\n{self.config.paths.ccxml}"
-            )
+            message = format_error(
+                "CCXML 文件不存在", path=self.config.paths.ccxml,
+                action="请检查“CCXML 文件”配置，或重新选择该文件")
+            self.log_entry.emit(message.replace("\n", " | "), "ERROR")
+            warning(self, "无法检测硬件", message)
             return
         
         if not self.config.paths.ccs_dss.exists():
-            QMessageBox.warning(
-                self,
-                "配置错误",
-                f"DSS 执行器不存在:\n{self.config.paths.ccs_dss}"
-            )
+            message = format_error(
+                "DSS 执行器不存在", path=self.config.paths.ccs_dss,
+                action="请检查“DSS 执行器”配置，或重新选择 ccs_dss 路径")
+            self.log_entry.emit(message.replace("\n", " | "), "ERROR")
+            warning(self, "无法检测硬件", message)
             return
         
         # 设置检测中状态
@@ -152,7 +187,7 @@ class HardwarePanel(QWidget):
             success: 是否成功
             message: 结果消息
         """
-        self.check_btn.setEnabled(True)
+        self._refresh_check_btn()
         
         if success:
             self.emulator_indicator.set_connected()
@@ -164,6 +199,11 @@ class HardwarePanel(QWidget):
         self.result_text.append(f"\n{'='*50}")
         self.result_text.append(f"检测结果: {'成功' if success else '失败'}")
         self.result_text.append(f"消息: {message}")
+
+        if success:
+            self.log_entry.emit(f"硬件检测完成：{message}", "INFO")
+        else:
+            self.log_entry.emit(f"硬件检测失败：{message}", "ERROR")
         
         self.check_completed.emit(success, message)
     
@@ -175,3 +215,5 @@ class HardwarePanel(QWidget):
             message: 日志消息
         """
         self.result_text.append(message)
+        level = "ERROR" if ("失败" in message or "错误" in message) else "INFO"
+        self.log_entry.emit(message, level)

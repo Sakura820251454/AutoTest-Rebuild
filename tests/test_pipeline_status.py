@@ -39,8 +39,13 @@ class PipelineStatusTest(TempTestCase):
     def _run_worker(self, cfg):
         worker = PipelineWorker(cfg, "test")
         state = {"finished": None, "logs": [], "progress": []}
+        def collect_entry(message, level):
+            # 失败/异常走 log_entry（带真实级别），与 INFO 一起纳入日志断言
+            state["logs"].append(message)
+
         worker.finished.connect(lambda ok: state.__setitem__("finished", bool(ok)))
         worker.log_message.connect(state["logs"].append)
+        worker.log_entry.connect(collect_entry)
         worker.progress_updated.connect(lambda p, m: state["progress"].append((p, m)))
         worker.run()
         return state

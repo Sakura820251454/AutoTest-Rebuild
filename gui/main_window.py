@@ -5,14 +5,17 @@ AutoTest GUI 主窗口
 
 @input Config (配置对象)
 @input ConfigPanel, HardwarePanel, ExecutePanel, LogPanel (子面板)
-@output MainWindow类
-@pos GUI核心入口，整合所有面板和菜单，提供图形化配置管理、硬件检测和测试执行
+@input QSettings (记住上次使用的配置)
+@output MainWindow类；resolve_startup_config() 启动配置选择规则
+@pos GUI核心入口，整合所有面板和菜单，提供图形化配置管理、硬件检测和测试执行；
+     启动时按 -c → config/config.json → 上次使用 → 空态 的顺序加载配置
 
 一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
 
 import sys
 import os
+import traceback
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -21,16 +24,44 @@ from PyQt5.QtWidgets import (
     QTabWidget, QStatusBar, QLabel, QPushButton,
     QFileDialog, QMessageBox, QApplication, QMenuBar, QMenu, QAction
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSettings, QUrl
+from PyQt5.QtGui import QDesktopServices
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import Config
+from src.logger import get_logger
+from src.runtime_paths import app_path
+from .utils.error_messages import describe_exception, format_error
+from .utils.message_boxes import critical, information, warning
 from .widgets.config_panel import ConfigPanel
 from .widgets.hardware_panel import HardwarePanel
 from .widgets.execute_panel import ExecutePanel
 from .widgets.log_panel import LogPanel
 from .dialogs.about_dialog import AboutDialog
+
+logger = get_logger(__name__)
+
+SETTINGS_ORG = "AutoTest"
+SETTINGS_APP = "AutoTestGUI"
+LAST_CONFIG_KEY = "last_config_path"
+DEFAULT_CONFIG_REL = Path("config") / "config.json"
+
+
+def resolve_startup_config(explicit_path, default_path, last_path):
+    """
+    选择启动时要加载的配置
+
+    优先级：-c 显式指定 → config/config.json → 上次使用的配置 → 空态（None）。
+    只返回真实存在的文件，调用方无需再判存在。
+    """
+    for candidate in (explicit_path, default_path, last_path):
+        if not candidate:
+            continue
+        path = Path(candidate).expanduser()
+        if path.is_file():
+            return path
+    return None
 
 
 class MainWindow(QMainWindow):
@@ -47,7 +78,8 @@ class MainWindow(QMainWindow):
         self.current_stage: str = "unknown"
         self.stage_description: str = ""
         self.config_path: Optional[str] = config_path
-        
+        self.config_available: bool = False
+
         self.setWindowTitle("AutoTest GUI - TI C2000 DSP 自动化测试")
         self.setMinimumSize(1000, 700)
         
@@ -55,10 +87,12 @@ class MainWindow(QMainWindow):
         self._setup_menu()
         self._setup_status_bar()
         self._connect_signals()
-        
-        # 如果指定了配置文件，自动加载
-        if config_path and os.path.exists(config_path):
-            self.load_config(config_path)
+
+        # 未加载配置前先进入空态（开始执行/开始检测禁用）
+        self._set_config_available(False)
+
+        # 启动配置：-c → config/config.json → 上次使用 → 空态
+        self._load_startup_config(config_path)
     
     def _setup_ui(self):
         """初始化界面"""
@@ -144,6 +178,21 @@ class MainWindow(QMainWindow):
         detect_stage_action = QAction("检测当前阶段", self)
         detect_stage_action.triggered.connect(self.on_detect_stage)
         tools_menu.addAction(detect_stage_action)
+
+        tools_menu.addSeparator()
+
+        # 目录快捷入口（不改变任何执行流程，只是打开资源管理器）
+        open_results_action = QAction("打开结果目录", self)
+        open_results_action.triggered.connect(self.on_open_results_dir)
+        tools_menu.addAction(open_results_action)
+
+        open_workspace_action = QAction("打开工作区", self)
+        open_workspace_action.triggered.connect(self.on_open_workspace_dir)
+        tools_menu.addAction(open_workspace_action)
+
+        open_log_action = QAction("打开日志目录", self)
+        open_log_action.triggered.connect(self.on_open_log_dir)
+        tools_menu.addAction(open_log_action)
         
         # 帮助菜单
         help_menu = menubar.addMenu("帮助")
@@ -183,15 +232,85 @@ class MainWindow(QMainWindow):
         
         # 硬件检测面板信号
         self.hardware_panel.check_completed.connect(self.on_hardware_check_completed)
-        
+        self.hardware_panel.log_entry.connect(self.on_log_entry)
+
         # 执行面板信号
         self.execute_panel.execution_started.connect(self.on_execution_started)
         self.execute_panel.execution_finished.connect(self.on_execution_finished)
         self.execute_panel.log_message.connect(self.on_log_message)
+        self.execute_panel.log_entry.connect(self.on_log_entry)
+        self.execute_panel.show_log_requested.connect(self.on_show_log_tab)
+        self.execute_panel.open_results_requested.connect(self.on_open_results_dir)
         
         # 阶段检测信号
         self.stage_detected.connect(self.on_stage_detected)
     
+    # ========== 启动配置 ==========
+
+    @staticmethod
+    def _settings() -> QSettings:
+        """QSettings 显式指定组织/应用名，避免依赖 QApplication 的全局设置"""
+        return QSettings(SETTINGS_ORG, SETTINGS_APP)
+
+    def _last_config_path(self) -> str:
+        """上次成功加载/保存的配置路径（没有则返回空串）"""
+        try:
+            value = self._settings().value(LAST_CONFIG_KEY, "")
+        except Exception:
+            return ""
+        return str(value) if value else ""
+
+    def _remember_config_path(self, path: str):
+        """记住本次使用的配置，下次启动时作为兜底"""
+        try:
+            settings = self._settings()
+            settings.setValue(LAST_CONFIG_KEY, str(path))
+            settings.sync()
+        except Exception:
+            pass
+
+    def _load_startup_config(self, config_path: Optional[str]):
+        """
+        启动时决定加载哪个配置
+
+        不带 -c 时先找 config/config.json，再尝试上次使用的配置；都不存在则保持空态。
+        """
+        explicit = str(config_path) if config_path else None
+        if explicit and not Path(explicit).is_file():
+            message = format_error(
+                "找不到 -c 指定的配置文件",
+                path=explicit,
+                action="请确认路径，或去掉 -c 让程序自动加载 config/config.json",
+            )
+            self.log_panel.append_log(message.replace("\n", " | "), "WARNING")
+            warning(self, "配置加载失败", message)
+            explicit = None
+
+        target = resolve_startup_config(
+            explicit, app_path(DEFAULT_CONFIG_REL), self._last_config_path()
+        )
+        if target is None:
+            self.log_panel.append_log(
+                "未加载配置：未指定 -c，config/config.json 和上次使用的配置都不存在。"
+                "请按“配置”页的三步引导完成设置。",
+                "WARNING",
+            )
+            self.set_status("未加载配置，请先在“配置”页完成设置")
+            return
+
+        self.load_config(str(target))
+
+    def _set_config_available(self, available: bool):
+        """同步“是否已加载配置”到各面板（禁用按钮 + 空态引导）"""
+        self.config_available = bool(available)
+        self.config_panel.set_config_loaded(self.config_available)
+        reason = (
+            "尚未加载配置：请先在“配置”页选择工作区目录并“保存配置”，"
+            "或通过“文件 → 打开配置...”加载"
+        )
+        self.execute_panel.set_config_available(self.config_available, reason)
+        self.hardware_panel.set_config_available(self.config_available, reason)
+
     def load_config(self, path: str):
         """
         加载配置文件
@@ -200,35 +319,48 @@ class MainWindow(QMainWindow):
             path: 配置文件路径
         """
         try:
-            self.config = Config.load(path)
-            self.config_path = path
-            
-            # 更新配置面板
-            self.config_panel.load_config(self.config)
-            
-            # 更新硬件检测面板
-            self.hardware_panel.set_config(self.config)
-            
-            # 更新执行面板
-            self.execute_panel.set_config(self.config)
-            
-            # 生成测试配置文件 full_regr.json
-            self._generate_test_config()
-            
-            # 发送信号
-            self.config_loaded.emit(self.config)
-            
-            # 更新状态栏
-            self.set_status(f"配置已加载: {path}")
-            
-            # 自动检测阶段
-            self.on_detect_stage()
-            
-            return True
-            
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"加载配置文件失败:\n{str(e)}")
+            config = Config.load(path)
+        except Exception as exc:
+            message = describe_exception(exc, path=str(path))
+            logger.error("加载配置失败: %s", path, exc_info=True)
+            self.log_panel.append_log(f"加载配置失败: {path}", "ERROR")
+            self.log_panel.append_log(traceback.format_exc().rstrip(), "DEBUG")
+            self._set_config_available(False)
+            self.set_status("配置加载失败")
+            critical(self, "配置加载失败", message)
             return False
+
+        self.config = config
+        self.config_path = path
+
+        # 更新配置面板
+        self.config_panel.load_config(self.config)
+
+        # 更新硬件检测面板
+        self.hardware_panel.set_config(self.config)
+
+        # 更新执行面板
+        self.execute_panel.set_config(self.config)
+
+        # 生成测试配置文件 full_regr.json
+        self._generate_test_config()
+
+        # 发送信号
+        self.config_loaded.emit(self.config)
+
+        # 记住本次配置并解除空态
+        self._remember_config_path(path)
+        self._set_config_available(True)
+
+        self.log_panel.append_log(f"配置已加载: {path}", "INFO")
+
+        # 更新状态栏
+        self.set_status(f"配置已加载: {path}")
+
+        # 自动检测阶段
+        self.on_detect_stage()
+
+        return True
     
     def _generate_test_config(self, run_timestamp: Optional[str] = None):
         """
@@ -245,10 +377,11 @@ class MainWindow(QMainWindow):
             
             if test_config_path and Path(test_config_path).exists():
                 self.set_status(f"测试配置已生成: {test_config_path}")
-        except Exception as e:
-            # 生成测试配置失败不影响主流程，只记录日志
-            import traceback
-            traceback.print_exc()
+        except Exception as exc:
+            # 生成测试配置失败不影响主流程，只写日志（含堆栈），不弹窗
+            logger.error("生成测试配置失败", exc_info=True)
+            self.log_panel.append_log("生成测试配置失败", "ERROR")
+            self.log_panel.append_log(traceback.format_exc().rstrip(), "DEBUG")
     
     def save_config(self, path: Optional[str] = None) -> bool:
         """
@@ -261,7 +394,7 @@ class MainWindow(QMainWindow):
             是否保存成功
         """
         if self.config is None:
-            QMessageBox.warning(self, "警告", "没有可保存的配置")
+            warning(self, "无法保存配置", "没有可保存的配置")
             return False
         
         try:
@@ -279,9 +412,13 @@ class MainWindow(QMainWindow):
                 probe.write_text("", encoding="utf-8")
                 probe.unlink()
             except OSError as exc:
-                QMessageBox.warning(
-                    self, "导出 dat 目录不可用",
-                    f"无法创建或写入导出 dat 目录:\n{results_dir}\n\n{exc}")
+                message = describe_exception(
+                    exc, path=str(results_dir),
+                    action="请换一个可写目录，或检查目录是否被占用")
+                logger.error("导出 dat 目录不可用: %s", results_dir, exc_info=True)
+                self.log_panel.append_log(message.replace("\n", " | "), "ERROR")
+                self.log_panel.append_log(traceback.format_exc().rstrip(), "DEBUG")
+                warning(self, "导出 dat 目录不可用", message)
                 return False
 
             # 确定保存路径
@@ -295,12 +432,22 @@ class MainWindow(QMainWindow):
             
             # 保存配置后重新生成测试配置文件
             self._generate_test_config()
-            
+
+            self._remember_config_path(save_path)
+            self._set_config_available(True)
+            self.log_panel.append_log(f"配置已保存: {save_path}", "INFO")
+
             self.set_status(f"配置已保存: {save_path}")
             return True
-            
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"保存配置文件失败:\n{str(e)}")
+
+        except Exception as exc:
+            message = describe_exception(
+                exc, path=str(path or self.config_path or ""),
+                action="请检查配置文件是否被占用、目录是否有写权限")
+            logger.error("保存配置失败", exc_info=True)
+            self.log_panel.append_log("保存配置失败", "ERROR")
+            self.log_panel.append_log(traceback.format_exc().rstrip(), "DEBUG")
+            critical(self, "保存配置失败", message)
             return False
     
     def _update_config_from_dict(self, config_dict: dict):
@@ -510,7 +657,11 @@ class MainWindow(QMainWindow):
     def on_check_hardware(self):
         """检测硬件"""
         if self.config is None:
-            QMessageBox.warning(self, "警告", "请先加载配置文件")
+            message = format_error(
+                "尚未加载配置",
+                action="请先在“配置”页选择目录并保存，或通过“文件 → 打开配置...”加载")
+            self.log_panel.append_log(message.replace("\n", " | "), "WARNING")
+            warning(self, "无法检测硬件", message)
             return
         
         # 切换到硬件检测标签页
@@ -527,7 +678,11 @@ class MainWindow(QMainWindow):
     def on_refresh_project(self):
         """刷新项目状态 - 重新检测当前阶段"""
         if self.config is None:
-            QMessageBox.warning(self, "警告", "请先加载配置文件")
+            message = format_error(
+                "尚未加载配置",
+                action="请先在“配置”页选择目录并保存，或通过“文件 → 打开配置...”加载")
+            self.log_panel.append_log(message.replace("\n", " | "), "WARNING")
+            warning(self, "无法刷新项目状态", message)
             return
 
         self.set_status("正在刷新项目状态...")
@@ -552,10 +707,12 @@ class MainWindow(QMainWindow):
         if success:
             self.hw_status_label.setText("硬件: 已连接")
             self.hw_status_label.setStyleSheet("color: green;")
+            self.log_panel.append_log(f"硬件检测通过: {message}", "INFO")
         else:
             self.hw_status_label.setText("硬件: 未连接")
             self.hw_status_label.setStyleSheet("color: red;")
-        
+            self.log_panel.append_log(f"硬件检测失败: {message}", "ERROR")
+
         self.set_status(f"硬件检测: {message}")
     
     def on_stage_detected(self, stage: str, description: str):
@@ -584,6 +741,14 @@ class MainWindow(QMainWindow):
     
     def on_execution_finished(self, success: bool):
         """执行完成处理"""
+        stopped = bool(getattr(self.execute_panel, "stopped", False))
+        if stopped:
+            self.log_panel.append_log("执行已停止（未执行用例标记为跳过）", "WARNING")
+        elif success:
+            self.log_panel.append_log("执行完成", "INFO")
+        else:
+            self.log_panel.append_log("执行失败", "ERROR")
+
         if success:
             self.set_status("执行完成")
             self.ready_label.setText("完成")
@@ -595,8 +760,57 @@ class MainWindow(QMainWindow):
         self.on_detect_stage()
     
     def on_log_message(self, message: str):
-        """日志消息处理"""
-        self.log_panel.append_log(message)
+        """日志消息处理（INFO）"""
+        self.log_panel.append_log(message, "INFO")
+
+    def on_log_entry(self, message: str, level: str):
+        """带级别的日志（worker / 硬件检测）"""
+        self.log_panel.append_log(message, level)
+
+    def on_show_log_tab(self):
+        """从错误条“查看日志”跳到日志页"""
+        self.tab_widget.setCurrentWidget(self.log_panel)
+
+    # ========== 目录快捷入口 ==========
+
+    def on_open_results_dir(self):
+        """打开结果目录（执行完成提示 / 工具菜单共用）"""
+        base = self.config.paths.results_dir if self.config else app_path("results")
+        self._open_directory(base, "结果目录", create=True)
+
+    def on_open_workspace_dir(self):
+        """打开工作区目录"""
+        base = self.config.paths.generate_dir if self.config else app_path("workspace")
+        self._open_directory(base, "工作区", create=False)
+
+    def on_open_log_dir(self):
+        """打开日志目录"""
+        from src.logger import get_log_dir
+        self._open_directory(get_log_dir() or app_path("logs"), "日志目录", create=True)
+
+    def _open_directory(self, path, label: str, create: bool = False):
+        """用资源管理器打开目录；失败时给三段式中文提示"""
+        target = Path(path)
+        if not target.exists():
+            if not create:
+                message = format_error(
+                    f"{label}还不存在", path=target,
+                    action="请先完成配置或执行一次，让目录自动生成")
+                self.log_panel.append_log(message.replace("\n", " | "), "WARNING")
+                information(self, f"{label}不存在", message)
+                return
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                message = describe_exception(
+                    exc, path=str(target),
+                    action="请检查路径是否存在、是否有写权限")
+                self.log_panel.append_log(message.replace("\n", " | "), "ERROR")
+                warning(self, f"无法打开{label}", message)
+                return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+        self.log_panel.append_log(f"已打开{label}: {target}", "INFO")
     
     def on_about(self):
         """关于对话框"""

@@ -6,8 +6,9 @@ AutoTest GUI 启动脚本
 @input PyQt5 (GUI框架)
 @input gui.main_window.MainWindow (主窗口)
 @output main()函数
-@pos GUI程序入口，检查依赖、初始化PyQt5应用、启动主窗口；兼容源码运行与 --windowed 打包运行，
-     并在冻结态显式锁定随包 Qt 插件路径（不受外部 QT_* 环境变量影响）
+@pos GUI程序入口，检查依赖、初始化PyQt5应用（加载 Qt 中文翻译）、启动主窗口；
+     兼容源码运行与 --windowed 打包运行，并在冻结态显式锁定随包 Qt 插件路径
+     （不受外部 QT_* 环境变量影响）
 
 一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
@@ -133,6 +134,48 @@ def _install_excepthook():
     sys.excepthook = handle
 
 
+def _install_qt_translator(app):
+    """
+    加载 Qt 自带中文翻译，让 QMessageBox 等标准按钮显示“确定/取消”
+
+    找不到 qt_zh_CN.qm 时静默跳过（只是按钮回到英文，不影响功能）。
+    """
+    try:
+        from PyQt5.QtCore import QLibraryInfo, QTranslator
+        translator = QTranslator(app)
+        translations = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
+        if not translator.load("qt_zh_CN", translations):
+            return
+        app.installTranslator(translator)
+        app._qt_zh_translator = translator  # 保持引用，避免被 GC 回收
+    except Exception:
+        pass
+
+
+def _install_chinese_button_filter(app):
+    """
+    所有 QMessageBox 显示时把标准按钮改成中文
+
+    部分 PyQt 发行版只有 qt_zh_CN.qm、没有 qtbase_zh_CN.qm，翻译后按钮仍是 OK/Cancel，
+    这里统一兜底，保证弹窗按钮为“确定/取消/是/否”。
+    """
+    try:
+        from PyQt5.QtCore import QEvent, QObject
+        from PyQt5.QtWidgets import QMessageBox
+        from gui.utils.message_boxes import localize_buttons
+
+        class _MessageBoxFilter(QObject):
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.Show and isinstance(obj, QMessageBox):
+                    localize_buttons(obj)
+                return False
+
+        app._qt_msgbox_filter = _MessageBoxFilter(app)
+        app.installEventFilter(app._qt_msgbox_filter)
+    except Exception:
+        pass
+
+
 def check_dependencies():
     """检查依赖是否安装"""
     try:
@@ -205,8 +248,13 @@ def _run(args):
         from PyQt5.QtCore import QCoreApplication
         QCoreApplication.addLibraryPath(str(qt_plugins))
 
+    app.setOrganizationName("AutoTest")
     app.setApplicationName("AutoTest GUI")
     app.setApplicationVersion("1.0.0")
+
+    # 标准对话框按钮中文化（确定/取消/是/否）
+    _install_qt_translator(app)
+    _install_chinese_button_filter(app)
 
     # 设置应用程序样式
     app.setStyle("Fusion")

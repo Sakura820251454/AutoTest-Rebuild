@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 错误对话框
+
+@input 标题、一句话原因、可选的详细信息（调用方应只传可读文案）
+@output 可复制的错误对话框
+@pos 统一错误展示；堆栈由调用方写入日志页，不在这里显示
+
+一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
 
 from PyQt5.QtWidgets import (
@@ -76,7 +82,7 @@ class ErrorDialog(QDialog):
     
     def copy_error(self):
         """复制错误信息到剪贴板"""
-        from PyQt6.QtWidgets import QApplication
+        from PyQt5.QtWidgets import QApplication
         
         text = self.msg_label.text()
         if hasattr(self, 'details_text'):

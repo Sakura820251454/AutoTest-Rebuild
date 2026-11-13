@@ -12,17 +12,17 @@ AutoTest 图形用户界面模块，基于 PyQt5 实现，提供直观的配置�
 | 文件名 | 地位 | 功能 |
 |--------|------|------|
 | `__init__.py` | 辅助 | 模块初始化 |
-| `main_window.py` | 核心 | GUI主窗口，整合所有面板和菜单 |
+| `main_window.py` | 核心 | GUI主窗口，整合所有面板和菜单；启动时按 `-c` → `config/config.json` → 上次使用 → 空态 加载配置 |
 
 ### 界面组件 (widgets/)
 
 | 文件名 | 地位 | 功能 |
 |--------|------|------|
-| `config_panel.py` | 核心 | 配置面板，编辑和显示配置信息 |
-| `hardware_panel.py` | 核心 | 硬件检测面板，检测XDS100连接状态 |
-| `execute_panel.py` | 核心 | 执行面板，控制测试执行和显示进度 |
-| `log_panel.py` | 辅助 | 日志面板，显示执行日志 |
-| `case_table.py` | 辅助 | 用例表格，显示用例执行状态 |
+| `config_panel.py` | 核心 | 配置面板，编辑和显示配置信息；未加载配置时显示三步空态引导 |
+| `hardware_panel.py` | 核心 | 硬件检测面板，检测XDS100连接状态；未加载配置时禁用检测 |
+| `execute_panel.py` | 核心 | 执行面板，控制测试执行和显示进度；顶部可关闭错误条 + 结果目录入口 |
+| `log_panel.py` | 辅助 | 日志面板，按级别着色、HTML 转义、保留换行、内存上限 2 万条、可打开日志目录 |
+| `case_table.py` | 辅助 | 用例表格，显示用例执行状态；右键可打开 dat 目录/复制路径 |
 | `path_selector.py` | 工具 | 路径选择器组件，文件/目录选择 |
 | `status_indicator.py` | 工具 | 状态指示器组件，显示连接状态 |
 
@@ -46,6 +46,7 @@ AutoTest 图形用户界面模块，基于 PyQt5 实现，提供直观的配置�
 | 文件名 | 地位 | 功能 |
 |--------|------|------|
 | `validators.py` | 工具 | 输入验证函数 |
+| `error_messages.py` | 工具 | 统一错误文案：原因 + 路径 + 建议，堆栈只进日志 |
 
 ## 界面结构
 
@@ -115,6 +116,13 @@ AutoTest 图形用户界面模块，基于 PyQt5 实现，提供直观的配置�
 - 支持断点续测恢复
 - 自动重连提示
 
+### 5. 易用性入口
+- 启动自动加载 `config/config.json`，其次上次使用的配置（QSettings），都没有则显示空态
+- 未加载配置时“开始执行/开始检测”禁用，tooltip 说明原因
+- 执行页顶部错误条（原因 + 路径 + 建议）可关闭，并可一键跳到日志页
+- 工具菜单可打开结果目录/工作区/日志目录；执行完成后可直接打开结果目录
+- 用例表右键可打开 dat 目录或复制路径
+
 ## 信号机制
 
 ### MainWindow 信号
@@ -126,11 +134,15 @@ AutoTest 图形用户界面模块，基于 PyQt5 实现，提供直观的配置�
 
 ### HardwarePanel 信号
 - `check_completed`: 硬件检测完成
+- `log_entry`: 带级别的日志（消息, 级别）
 
 ### ExecutePanel 信号
 - `execution_started`: 执行开始
 - `execution_finished`: 执行完成
 - `log_message`: 日志消息
+- `log_entry`: 带级别的日志（消息, 级别）
+- `show_log_requested`: 错误条“查看日志”
+- `open_results_requested`: 结果提示“打开结果目录”
 
 ## 工作线程
 
@@ -140,6 +152,7 @@ AutoTest 图形用户界面模块，基于 PyQt5 实现，提供直观的配置�
 - 用例开始/完成信号
 - 硬件错误信号
 - 日志消息信号
+- 带级别日志信号（失败/异常 ERROR，跳过 WARNING）
 
 ### HardwareChecker
 后台检测硬件连接：

@@ -3,7 +3,13 @@
 """
 执行面板
 
-用于控制测试执行和显示进度
+用于控制测试执行和显示进度；提供可关闭的错误条与“打开结果目录”入口
+
+@input Config、PipelineWorker 信号
+@output execution_started/execution_finished/log_message/log_entry 信号、用例状态表
+@pos “执行”标签页，负责任务启动/停止、进度展示与错误提示
+
+一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
 
 import sys
@@ -14,7 +20,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QProgressBar, QGroupBox,
     QRadioButton, QButtonGroup, QMessageBox, QTextEdit,
-    QCheckBox
+    QCheckBox, QFrame
 )
 from .no_scroll_spinbox import NoScrollSpinBox as QSpinBox
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -24,6 +30,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.config import Config
 from src.runtime_paths import app_path, to_posix
 from .case_table import CaseTable
+from ..utils.error_messages import format_error
+from ..utils.message_boxes import warning
 from ..workers.pipeline_worker import PipelineWorker
 from ..dialogs.hardware_error_dialog import HardwareErrorDialog
 
@@ -34,6 +42,9 @@ class ExecutePanel(QWidget):
     execution_started = pyqtSignal()
     execution_finished = pyqtSignal(bool)  # 成功/失败
     log_message = pyqtSignal(str)  # 日志消息
+    log_entry = pyqtSignal(str, str)  # (消息, 级别)
+    show_log_requested = pyqtSignal()  # 错误条“查看日志”
+    open_results_requested = pyqtSignal()  # 结果提示“打开结果目录”
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,6 +53,8 @@ class ExecutePanel(QWidget):
         self.current_stage: str = "unknown"
         self.stage_description: str = ""
         self.worker: Optional[PipelineWorker] = None
+        self._config_available: bool = False
+        self._no_config_reason: str = "尚未加载配置"
         
         # 断点续测相关
         self.resume_batch: int = 0  # 0 表示不启用断点续测
@@ -58,7 +71,35 @@ class ExecutePanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
-        
+
+        # ===== 顶部错误条（可关闭，默认隐藏，不改变正常流程布局）=====
+        self.error_bar = QFrame()
+        self.error_bar.setFrameShape(QFrame.Shape.StyledPanel)
+        self.error_bar.setStyleSheet(
+            "QFrame { background-color: #FDECEA; border: 1px solid #E0A0A0; border-radius: 4px; }")
+        error_layout = QHBoxLayout(self.error_bar)
+        error_layout.setContentsMargins(10, 6, 6, 6)
+        error_layout.setSpacing(8)
+
+        self.error_label = QLabel("")
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet("color: #A00000; border: none;")
+        error_layout.addWidget(self.error_label, 1)
+
+        self.error_log_btn = QPushButton("查看日志")
+        self.error_log_btn.setFixedWidth(90)
+        self.error_log_btn.clicked.connect(self.show_log_requested.emit)
+        error_layout.addWidget(self.error_log_btn)
+
+        self.error_close_btn = QPushButton("×")
+        self.error_close_btn.setFixedWidth(28)
+        self.error_close_btn.setToolTip("关闭错误提示")
+        self.error_close_btn.clicked.connect(self.hide_error_bar)
+        error_layout.addWidget(self.error_close_btn)
+
+        self.error_bar.setVisible(False)
+        layout.addWidget(self.error_bar)
+
         # ===== 执行控制组 =====
         control_group = QGroupBox("执行控制")
         control_layout = QVBoxLayout(control_group)
@@ -181,6 +222,29 @@ class ExecutePanel(QWidget):
         button_layout.addStretch()
         
         layout.addLayout(button_layout)
+
+        # ===== 结果提示（执行结束后显示，可直接打开结果目录）=====
+        self.result_hint = QFrame()
+        self.result_hint.setFrameShape(QFrame.Shape.StyledPanel)
+        result_layout = QHBoxLayout(self.result_hint)
+        result_layout.setContentsMargins(10, 6, 6, 6)
+        result_layout.setSpacing(8)
+
+        self.result_hint_label = QLabel("")
+        self.result_hint_label.setWordWrap(True)
+        result_layout.addWidget(self.result_hint_label, 1)
+
+        self.open_results_btn = QPushButton("打开结果目录")
+        self.open_results_btn.setFixedWidth(120)
+        self.open_results_btn.clicked.connect(self.open_results_requested.emit)
+        result_layout.addWidget(self.open_results_btn)
+
+        self.result_hint.setVisible(False)
+        layout.addWidget(self.result_hint)
+
+        # 未加载配置前不能开始执行
+        self.case_table.set_dat_dir_provider(self.case_dat_dir)
+        self._refresh_start_btn()
     
     def set_config(self, config: Config):
         """
@@ -190,11 +254,75 @@ class ExecutePanel(QWidget):
             config: 配置对象
         """
         self.config = config
+        self._config_available = True
+        self._refresh_start_btn()
         
         # 加载用例列表
         self.case_table.clear_cases()
         for case in config.cases:
             self.case_table.add_case(case.name)
+
+    def set_config_available(self, available: bool, reason: str = ""):
+        """配置是否可用：不可用时禁用“开始执行”并用 tooltip 说明原因"""
+        self._config_available = bool(available)
+        if reason:
+            self._no_config_reason = reason
+        self._refresh_start_btn()
+
+    def _refresh_start_btn(self):
+        """按“配置可用 + 未在执行”刷新开始按钮状态"""
+        running = bool(self.worker and self.worker.isRunning())
+        self.start_btn.setEnabled(self._config_available and not running)
+        self.start_btn.setToolTip("" if self._config_available else self._no_config_reason)
+
+    def show_error_bar(self, message: str):
+        """显示顶部错误条（可关闭，带“查看日志”）"""
+        self.error_label.setText(message)
+        self.error_bar.setVisible(True)
+
+    def hide_error_bar(self):
+        """关闭顶部错误条"""
+        self.error_bar.setVisible(False)
+
+    def case_dat_dir(self, case_name: str) -> Optional[Path]:
+        """用例的 dat 结果目录（优先 <结果根>/<时间戳>/<用例>/memory）"""
+        if self.config is None:
+            return None
+        base = self.config.paths.results_dir
+        stems = []
+        if self.run_timestamp:
+            stems.append(base / self.run_timestamp / case_name)
+        stems.append(base / case_name)
+        for stem in stems:
+            if (stem / "memory").is_dir():
+                return stem / "memory"
+            if stem.is_dir():
+                return stem
+        return stems[0]
+
+    def _results_dir(self) -> Optional[Path]:
+        """本次执行的结果目录（没有时间戳时回退到结果根目录）"""
+        if self.config is None:
+            return None
+        base = self.config.paths.results_dir
+        if self.run_timestamp:
+            candidate = base / self.run_timestamp
+            if candidate.exists():
+                return candidate
+        return base
+
+    def _update_result_hint(self):
+        """执行结束后在按钮下方展示结果目录，便于直接打开"""
+        target = self._results_dir()
+        if target is None:
+            self.result_hint.setVisible(False)
+            return
+        self.result_hint_label.setText(f"结果目录：{target}")
+        self.result_hint.setVisible(True)
+
+    def on_log_entry(self, message: str, level: str):
+        """worker 带级别的日志，转发给主窗口日志页"""
+        self.log_entry.emit(message, level)
     
     def set_current_stage(self, stage: str, description: str = ""):
         """
@@ -270,7 +398,11 @@ class ExecutePanel(QWidget):
     def start_execution(self):
         """开始执行"""
         if self.config is None:
-            QMessageBox.warning(self, "警告", "请先加载配置文件")
+            warning(
+                self, "无法开始执行",
+                format_error(
+                    "尚未加载配置",
+                    action="请先在“配置”页选择目录并保存，或通过“文件 → 打开配置...”加载"))
             return
         
         # 获取选中的起始阶段
@@ -278,7 +410,7 @@ class ExecutePanel(QWidget):
         
         # 验证是否可以执行
         if start_stage == "test" and self.current_stage != "test":
-            QMessageBox.warning(
+            warning(
                 self,
                 "无法执行",
                 "当前阶段不支持仅测试，请先完成构建。"
@@ -340,6 +472,10 @@ class ExecutePanel(QWidget):
         self.failed_batch_number = 0
         self.stopping = False
         self.stopped = False
+
+        # 新一轮执行：收起上一轮的错误条与结果提示
+        self.hide_error_bar()
+        self.result_hint.setVisible(False)
         
         # 发送开始信号
         self.execution_started.emit()
@@ -357,6 +493,7 @@ class ExecutePanel(QWidget):
         self.worker.case_started.connect(self.on_case_started)
         self.worker.case_finished.connect(self.on_case_finished)
         self.worker.log_message.connect(self.on_log_message)
+        self.worker.log_entry.connect(self.on_log_entry)
         self.worker.hardware_error.connect(self.on_hardware_error)
         self.worker.retry_attempt.connect(self.on_retry_attempt)
         self.worker.finished.connect(self.on_execution_finished)
@@ -527,7 +664,7 @@ class ExecutePanel(QWidget):
         Args:
             success: 是否成功
         """
-        self.start_btn.setEnabled(True)
+        self._refresh_start_btn()
         self.stop_btn.setEnabled(False)
         self.stopping = False
 
@@ -551,6 +688,19 @@ class ExecutePanel(QWidget):
             else:
                 self.stats_label.setText("执行失败")
 
+            # 顶部错误条：一句话原因 + 结果路径 + 建议动作，堆栈只进日志页
+            if self.hardware_error_occurred:
+                reason = "硬件连接中断，测试未能完成"
+            else:
+                reason = getattr(worker, "final_summary", "") or "测试执行失败"
+            target = self._results_dir()
+            self.show_error_bar(format_error(
+                reason,
+                path=target,
+                action="请点击“查看日志”定位具体原因，修正后重新执行"))
+
+        # 执行结束都给出结果目录入口；失败时错误条同时可见
+        self._update_result_hint()
         self.execution_finished.emit(success)
 
     def _recover_timestamp_from_results(self) -> Optional[str]:

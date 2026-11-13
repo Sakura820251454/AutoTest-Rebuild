@@ -45,6 +45,7 @@ GUI 用例自动设置 `QT_QPA_PLATFORM=offscreen`，不会弹窗、不会阻塞
 | `test_gui_config_panel.py` | 生成模式切换时模板/源文件两行显隐、加密开关与回读校验联动、字段加载/回读往返（结果目录、隐藏兼容字段）、Flash 三态 |
 | `test_gui_execute_panel.py` | 断点续测复选框联动起始批次、从配置结果目录恢复最新时间戳、旧 `5_result_dat` 兼容、无结果返回 None |
 | `test_stop_semantics.py` | 停止后剩余用例标记 `Skipped` 并只通知一次、跳过用例不参与 FLASH 加密且不计失败、停止时 `run_all` 全量跳过且无加密失败；结束摘要区分"已停止/测试完成"、成功/失败/跳过口径、失败原因直显；点击停止立即显示"正在停止…"、停止收尾期间不被覆盖、正常结束仍显示"执行完成" |
+| `test_gui_usability.py` | 启动配置优先级（`-c` → `config/config.json` → 上次使用 → 空态）；错误文案三段式且 JSON/文件类异常中文化、不含 traceback；日志页 HTML 转义、多行不粘连、级别过滤与内存上限；未加载配置时开始执行/开始检测禁用并带 tooltip、配置页空态引导；执行失败错误条与结果目录提示、停止不算错误；用例表 dat 目录解析与复制路径；worker 日志真实级别（失败 ERROR / 成功 INFO / 跳过 WARNING） |
 
 以下环节**不在自动回归范围**，按人工清单验证：[MANUAL_CHECKS.md](MANUAL_CHECKS.md)。
 
@@ -55,8 +56,8 @@ GUI 用例自动设置 `QT_QPA_PLATFORM=offscreen`，不会弹窗、不会阻塞
 
 ## 本次基线
 
-- 用例总数：170，通过 170，失败 0，错误 0，跳过 0
-- 单次全量耗时：约 6.0 秒（Windows，Python 3.9.12 32 位）
+- 用例总数：197，通过 197，失败 0，错误 0，跳过 0
+- 单次全量耗时：约 6.1 秒（Windows，Python 3.9.12 32 位）
 
 ## 配置字段守卫
 

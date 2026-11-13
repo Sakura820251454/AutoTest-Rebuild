@@ -4,6 +4,12 @@
 流水线执行工作线程
 
 在后台执行测试流水线，调用与命令行相同的业务逻辑
+
+@input Config、起始阶段、断点续测参数
+@output progress_updated/case_finished/log_message/log_entry/finished 等信号
+@pos GUI 与业务逻辑之间的线程边界；日志按真实级别上报（失败/堆栈为 ERROR）
+
+一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
 
 import sys
@@ -12,6 +18,7 @@ import json
 import os
 import time
 import logging
+import traceback
 from pathlib import Path
 from typing import Optional, List, Tuple
 from enum import Enum
@@ -37,10 +44,17 @@ class GUILogHandler(logging.Handler):
         self.log_signal = log_signal
     
     def emit(self, record):
-        """发送日志记录到 GUI"""
+        """发送日志记录到 GUI（带真实级别）
+
+        注意两点：
+        1. 控制台 ColoredFormatter 会给 record.levelname 拼上 ANSI 颜色码，
+           这里必须用 levelno 还原级别，否则 ERROR 会被当成未知级别显示成 INFO；
+        2. 只用 record.getMessage()，堆栈由 worker 单独按行发送，
+           用 self.format(record) 会把 traceback 再拼一遍造成重复。
+        """
         try:
-            msg = self.format(record)
-            self.log_signal.emit(msg)
+            msg = record.getMessage()
+            self.log_signal.emit(msg, logging.getLevelName(record.levelno))
         except Exception:
             pass
 
@@ -83,7 +97,8 @@ class PipelineWorker(QThread):
     case_list_loaded = pyqtSignal(list)  # 用例列表加载完成(用例名称列表)
     case_started = pyqtSignal(str)  # 用例开始
     case_finished = pyqtSignal(str, str, float)  # 用例完成(名称, 状态, 耗时)
-    log_message = pyqtSignal(str)  # 日志消息
+    log_message = pyqtSignal(str)  # 日志消息（INFO）
+    log_entry = pyqtSignal(str, str)  # 日志消息(文本, 级别)
     hardware_error = pyqtSignal(int, str)  # 硬件连接错误(批次号, 错误信息)
     retry_attempt = pyqtSignal(int, int, int)  # 重试尝试(批次号, 当前次数, 最大次数)
     finished = pyqtSignal(bool)  # 执行完成(成功/失败)
@@ -114,8 +129,8 @@ class PipelineWorker(QThread):
             log_dir = setup_logger()
             logger = get_logger(__name__)
 
-            # 添加自定义日志处理器，将日志发送到 GUI
-            gui_handler = GUILogHandler(self.log_message)
+            # 添加自定义日志处理器，将日志（含真实级别）发送到 GUI
+            gui_handler = GUILogHandler(self.log_entry)
             gui_handler.setLevel(logging.INFO)
             logging.getLogger().addHandler(gui_handler)
 
@@ -159,10 +174,18 @@ class PipelineWorker(QThread):
                     pass
 
         except Exception as e:
-            self.log_message.emit(f"执行错误: {str(e)}")
-            import traceback
-            self.log_message.emit(traceback.format_exc())
+            self._emit_exception("执行错误", e)
             self.finished.emit(False)
+
+    def _emit_error(self, message: str):
+        """失败信息按 ERROR 级别送到日志页"""
+        self.log_entry.emit(message, "ERROR")
+
+    def _emit_exception(self, message: str, exc: Exception):
+        """异常：一句话原因 + 堆栈，全部按 ERROR 写日志页（不弹 Python 原文）"""
+        self.log_entry.emit(f"{message}: {type(exc).__name__}: {exc}", "ERROR")
+        self.log_entry.emit(traceback.format_exc().rstrip(), "ERROR")
+        logging.getLogger(__name__).error(message, exc_info=True)
 
     def _get_steps(self) -> List[Step]:
         """
@@ -357,9 +380,7 @@ class PipelineWorker(QThread):
             return True
 
         except Exception as e:
-            self.log_message.emit(f"执行错误: {str(e)}")
-            import traceback
-            self.log_message.emit(traceback.format_exc())
+            self._emit_exception("执行错误", e)
             return False
 
     def _execute_generate(self, config: Config) -> bool:
@@ -391,9 +412,9 @@ class PipelineWorker(QThread):
                 # 工作区不存在 / 没有工程 / 模板源为空，都不能静默当成“生成完成”
                 workspace = config.paths.generate_dir
                 if not workspace.exists():
-                    self.log_message.emit(f"生成失败：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
+                    self._emit_error(f"生成失败：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
                 else:
-                    self.log_message.emit(
+                    self._emit_error(
                         f"生成失败：工作区 {workspace} 中没有找到任何有效工程，请检查工作区目录是否配置正确"
                     )
                 return False
@@ -402,9 +423,7 @@ class PipelineWorker(QThread):
             return success_count > 0
 
         except Exception as e:
-            self.log_message.emit(f"生成失败: {str(e)}")
-            import traceback
-            self.log_message.emit(traceback.format_exc())
+            self._emit_exception("生成失败", e)
             return False
 
     def _execute_build(self, config: Config) -> bool:
@@ -464,13 +483,13 @@ class PipelineWorker(QThread):
             # 先获取工程总数用于进度计算
             workspace = config.paths.generate_dir
             if not workspace.exists():
-                self.log_message.emit(f"构建失败：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
+                self._emit_error(f"构建失败：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
                 return False
 
             projects = builder.find_projects()
             self._build_total = len(projects)
             if not projects:
-                self.log_message.emit(
+                self._emit_error(
                     f"构建失败：工作区 {workspace} 中没有任何有效工程（未找到含 .project 的子目录），"
                     f"已中止，避免后续误测旧工程"
                 )
@@ -489,9 +508,7 @@ class PipelineWorker(QThread):
             return success_count > 0
 
         except Exception as e:
-            self.log_message.emit(f"构建失败: {str(e)}")
-            import traceback
-            self.log_message.emit(traceback.format_exc())
+            self._emit_exception("构建失败", e)
             return False
 
     def _execute_test(self, config: Config) -> Tuple[bool, int]:
@@ -581,9 +598,9 @@ class PipelineWorker(QThread):
                 # 不能拿旧 full_regr.json 继续跑，否则会无声地测旧工程
                 workspace = config.paths.generate_dir
                 if not workspace.exists():
-                    self.log_message.emit(f"测试中止：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
+                    self._emit_error(f"测试中止：工作区目录不存在，请检查“工作区目录”配置: {workspace}")
                 else:
-                    self.log_message.emit(
+                    self._emit_error(
                         f"测试中止：工作区 {workspace} 中没有找到任何 .out 文件，请先构建或检查工作区目录"
                     )
                 self.progress_updated.emit(0, "测试未执行：未找到 .out")
@@ -619,15 +636,15 @@ class PipelineWorker(QThread):
             # FLASH 加密失败必须明确告知（不能只留在滚动日志里，也不能当作成功）
             encrypt_failures = getattr(executor, "encrypt_failures", None) or []
             if encrypt_failures:
-                self.log_message.emit(f"FLASH 段加密失败 {len(encrypt_failures)} 处，相关数据不能直接用于软仿：")
+                self._emit_error(f"FLASH 段加密失败 {len(encrypt_failures)} 处，相关数据不能直接用于软仿：")
                 for line in encrypt_failures:
-                    self.log_message.emit(f"  {line}")
+                    self._emit_error(f"  {line}")
 
             failure_reasons = getattr(executor, "failure_reasons", None) or []
             if failure_reasons:
-                self.log_message.emit(f"失败原因（{len(failure_reasons)} 项）：")
+                self._emit_error(f"失败原因（{len(failure_reasons)} 项）：")
                 for line in failure_reasons:
-                    self.log_message.emit(f"  {line}")
+                    self._emit_error(f"  {line}")
 
             percent, summary = format_execution_summary(
                 stopped, success, failed, skipped, total,
@@ -644,9 +661,7 @@ class PipelineWorker(QThread):
                 self.log_message.emit(f"测试执行完成: {success}/{len(results)} 成功")
 
         except Exception as e:
-            self.log_message.emit(f"测试执行失败: {str(e)}")
-            import traceback
-            self.log_message.emit(traceback.format_exc())
+            self._emit_exception("测试执行失败", e)
             return False, self._test_success_count
 
         return True, self._test_success_count
@@ -664,11 +679,11 @@ class PipelineWorker(QThread):
         if status == "success":
             self.log_message.emit(f"用例成功: {case_name} ({duration:.1f}s)")
         elif status == "error":
-            self.log_message.emit(f"用例错误: {case_name} - 硬件连接断开")
+            self._emit_error(f"用例错误: {case_name} - 硬件连接断开")
         elif status == "skipped":
-            self.log_message.emit(f"用例跳过: {case_name}")
+            self.log_entry.emit(f"用例跳过: {case_name}", "WARNING")
         else:
-            self.log_message.emit(f"用例失败: {case_name} - {status}")
+            self._emit_error(f"用例失败: {case_name} - {status}")
         
         self.case_finished.emit(case_name, status, duration)
 

@@ -3,7 +3,13 @@
 """
 配置面板
 
-用于编辑和显示配置信息
+用于编辑和显示配置信息；未加载配置时在顶部显示三步空态引导
+
+@input Config、用户编辑
+@output 配置表单、config_changed 信号
+@pos “配置”标签页，提供路径/构建/测试等配置项与空态引导
+
+一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
 
 import sys
@@ -90,7 +96,30 @@ class ConfigPanel(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(15)
-        
+
+        # ===== 空态引导（未加载配置时显示，加载后隐藏）=====
+        self.empty_guide = QFrame()
+        self.empty_guide.setFrameShape(QFrame.Shape.StyledPanel)
+        self.empty_guide.setStyleSheet(
+            "QFrame { background-color: #F3F7FB; border: 1px solid #B7CFE8; border-radius: 4px; }")
+        guide_layout = QVBoxLayout(self.empty_guide)
+        guide_layout.setContentsMargins(12, 10, 12, 10)
+        guide_layout.setSpacing(6)
+
+        guide_title = QLabel("还没有加载配置，按三步开始：")
+        guide_title.setStyleSheet("font-weight: bold; border: none;")
+        guide_layout.addWidget(guide_title)
+
+        guide_text = QLabel(
+            "① 选择目录：在下方“路径配置”里选择工作区目录（导出 dat 目录会自动带出）\n"
+            "② 保存配置：点击页面底部“保存配置”\n"
+            "③ 检测硬件：切换到“硬件检测”页，点击“开始检测”"
+        )
+        guide_text.setWordWrap(True)
+        guide_text.setStyleSheet("border: none;")
+        guide_layout.addWidget(guide_text)
+        main_layout.addWidget(self.empty_guide)
+
         # 创建滚动区域
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -573,6 +602,10 @@ class ConfigPanel(QWidget):
 
         # 初始就按默认模式应用一次可见性（不依赖用户切换下拉框）
         self._apply_generation_mode_visibility()
+
+    def set_config_loaded(self, loaded: bool):
+        """空态引导：未加载配置时显示三步引导，加载后隐藏"""
+        self.empty_guide.setVisible(not loaded)
 
     def load_config(self, config: Config):
         """

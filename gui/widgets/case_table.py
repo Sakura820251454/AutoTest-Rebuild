@@ -3,15 +3,24 @@
 """
 用例表格组件
 
-显示测试用例列表和执行状态
+显示测试用例列表和执行状态；右键可打开 dat 目录或复制路径
+
+@input 用例名称/状态/耗时/消息、dat 目录解析回调
+@output 用例状态表与右键菜单操作
+@pos “执行”页的用例列表，只读展示并支持目录快捷操作
+
+一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
 """
+
+from pathlib import Path
+from typing import Callable, Optional
 
 from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView
+    QAbstractItemView, QMenu, QApplication, QMessageBox
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QBrush
+from PyQt5.QtCore import Qt, QUrl
+from PyQt5.QtGui import QColor, QBrush, QDesktopServices
 
 
 class CaseTable(QTableWidget):
@@ -32,6 +41,7 @@ class CaseTable(QTableWidget):
         
         self._setup_ui()
         self.cases = {}  # 用例状态字典 {name: status}
+        self.dat_dir_provider: Optional[Callable[[str], Optional[Path]]] = None
     
     def _setup_ui(self):
         """初始化界面"""
@@ -170,3 +180,59 @@ class CaseTable(QTableWidget):
     def get_skipped_count(self) -> int:
         """获取已跳过用例数量（未执行，不计入失败）"""
         return sum(1 for case in self.cases.values() if case["status"] == "skipped")
+
+    # ========== 右键菜单：打开 dat 目录 / 复制路径 ==========
+
+    def set_dat_dir_provider(self, provider: Callable[[str], Optional[Path]]):
+        """注入“用例名 → dat 目录”的解析函数（由执行面板提供）"""
+        self.dat_dir_provider = provider
+
+    def _case_dat_dir(self, case_name: str) -> Optional[Path]:
+        if self.dat_dir_provider is None:
+            return None
+        try:
+            path = self.dat_dir_provider(case_name)
+        except Exception:
+            return None
+        return Path(path) if path else None
+
+    def open_case_dat_dir(self, case_name: str):
+        """用资源管理器打开该用例的 dat 目录"""
+        path = self._case_dat_dir(case_name)
+        if path is None:
+            QMessageBox.information(self, "提示", "尚未加载配置，无法定位 dat 目录")
+            return
+        if not path.is_dir():
+            QMessageBox.information(
+                self, "提示",
+                f"该用例的 dat 目录还不存在：\n{path}\n\n请先执行该用例")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def copy_case_path(self, case_name: str):
+        """复制该用例的 dat 目录路径"""
+        path = self._case_dat_dir(case_name)
+        if path is None:
+            QMessageBox.information(self, "提示", "尚未加载配置，无法定位 dat 目录")
+            return
+        QApplication.clipboard().setText(str(path))
+
+    def contextMenuEvent(self, event):
+        """在用例行上右键：打开 dat 目录 / 复制路径"""
+        row = self.rowAt(event.pos().y())
+        if row < 0:
+            return
+        item = self.item(row, 0)
+        if item is None:
+            return
+
+        case_name = item.text()
+        menu = QMenu(self)
+        open_action = menu.addAction("打开 dat 目录")
+        copy_action = menu.addAction("复制路径")
+
+        chosen = menu.exec_(event.globalPos())
+        if chosen is open_action:
+            self.open_case_dat_dir(case_name)
+        elif chosen is copy_action:
+            self.copy_case_path(case_name)
