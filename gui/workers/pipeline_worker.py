@@ -13,7 +13,7 @@ import os
 import time
 import logging
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from enum import Enum
 
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -310,8 +310,10 @@ class PipelineWorker(QThread):
                     if not self._execute_build(config):
                         return False
                 elif step == Step.TEST:
-                    success_count = self._execute_test(config)
+                    test_ok, success_count = self._execute_test(config)
                     completed_cases += success_count
+                    if not test_ok:
+                        return False
 
             return True
 
@@ -453,7 +455,7 @@ class PipelineWorker(QThread):
             self.log_message.emit(traceback.format_exc())
             return False
 
-    def _execute_test(self, config: Config) -> int:
+    def _execute_test(self, config: Config) -> Tuple[bool, int]:
         """
         执行测试步骤 - 调用真实的测试逻辑
 
@@ -461,7 +463,8 @@ class PipelineWorker(QThread):
             config: 配置对象
 
         Returns:
-            成功执行的用例数
+            (是否成功执行测试, 成功用例数)。工作区缺失/无 .out/权限拒绝等“压根没跑起来”
+            的情况返回 False，让流水线整体按失败上报，而不是显示“执行完成”。
         """
         # 使用类属性来跟踪进度
         self._test_success_count = 0
@@ -537,7 +540,7 @@ class PipelineWorker(QThread):
                         f"测试中止：工作区 {workspace} 中没有找到任何 .out 文件，请先构建或检查工作区目录"
                     )
                 self.progress_updated.emit(0, "测试未执行：未找到 .out")
-                return 0
+                return False, 0
 
             import json
             with open(test_config_path, "r", encoding="utf-8") as f:
@@ -583,8 +586,9 @@ class PipelineWorker(QThread):
             self.log_message.emit(f"测试执行失败: {str(e)}")
             import traceback
             self.log_message.emit(traceback.format_exc())
+            return False, self._test_success_count
 
-        return self._test_success_count
+        return True, self._test_success_count
     
     def _handle_case_finished(self, case_name: str, status: str, duration: float):
         """
