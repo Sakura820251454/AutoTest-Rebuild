@@ -3,7 +3,7 @@
 无硬件、无板卡、无 CCS 编译条件下的自动化回归集。目的：改完代码后一条命令确认既有功能没被破坏。
 
 - 只使用标准库 `unittest` 与项目已有的 PyQt5，没有新增依赖。
-- 只新增 `tests/` 下的文件，不修改 `src/`、`gui/`。
+- 只新增/修改 `tests/` 下的文件；`src/`、`gui/` 的缺陷修复走独立提交，不用测试代偿。
 - 每个用例使用独立临时目录，结束即删除；不写真实配置文件，不写 `_packaging/release`，不运行 PyInstaller。
 
 ## 怎么跑
@@ -39,21 +39,23 @@ GUI 用例自动设置 `QT_QPA_PLATFORM=offscreen`，不会弹窗、不会阻塞
 | `test_executor_postprocess.py` | `_post_process_dat_files` 剥新旧 CCS 文件头、幂等、普通数据不误伤；`_copy_case_projects` 过滤中间文件、旧文件清理、无工程根时安全返回、开关关闭时不复制 |
 | `test_flash_encrypt.py` | 进程内加载根目录 `encrypt_flash_dat.py`、`FLASH0~3.dat` 产出与行数、输入不被改写、回读校验、解密还原一致、文件缺失/行数错误/脚本缺失的失败分支 |
 | `test_executor_flash_integration.py` | 按用例/子目录去重加密、`encrypt_status` 成功/失败/跳过、缺失 `FLASH.dat` 记录失败、RAM 用例跳过 |
+| `test_executor_results.py` | `_read_case_result` 成功/失败/异常状态与两列旧格式、耗时缺失、耗时非整数/带单位/空串/负数/超大值时仅丢耗时且状态照常；`_collect_results` 汇总匹配、时间戳目录缺失、summary 缺失/空/不完整；`_find_last_completed_batch` 全完成、首批失败、有目录无 summary、中间批次不完整时的续测起点 |
+| `test_generator.py` | 模板模式按源文件批量生成、模板名读取与回退、工程名/产物名在各配置文件中的替换、工程名含 `& < > "` 时按 XML 转义且生成后可被 `ET.parse` 解析、原有实体不二次转义、模板本身损坏时报失败而不是静默成功、目标已存在时跳过与 `clean=True` 重建、模板/源目录与 `.cproject` 缺失、手动模式工程校验 |
 | `test_report_generator.py` | 未开加密 CSV 两列、开加密三列、`dat_dir` 缺失时回落到结果根目录、空结果不生成文件 |
 | `test_gui_config_panel.py` | 生成模式切换时模板/源文件两行显隐、加密开关与回读校验联动、字段加载/回读往返（结果目录、隐藏兼容字段）、Flash 三态 |
 | `test_gui_execute_panel.py` | 断点续测复选框联动起始批次、从配置结果目录恢复最新时间戳、旧 `5_result_dat` 兼容、无结果返回 None |
 
 以下环节**不在自动回归范围**，按人工清单验证：[MANUAL_CHECKS.md](MANUAL_CHECKS.md)。
 
-- 真实 CCS 工程生成与 `eclipsec` 编译
+- 真实 `eclipsec` 编译（工程生成已由 `test_generator.py` 用合成模板覆盖）
 - DSS/JTAG 连板执行、硬件超时与重试
 - 板上真实 `FLASH.dat` 的端到端加密
 - 打包后 exe 的冻结模式冒烟
 
 ## 本次基线
 
-- 用例总数：100，通过 100，失败 0，错误 0，跳过 0
-- 单次全量耗时：约 4.4 秒（Windows，Python 3.9.12 32 位）
+- 用例总数：158，通过 158，失败 0，错误 0，跳过 0
+- 单次全量耗时：约 4.8 秒（Windows，Python 3.9.12 32 位）
 
 ## 配置字段守卫
 
@@ -70,6 +72,9 @@ GUI 用例自动设置 `QT_QPA_PLATFORM=offscreen`，不会弹窗、不会阻塞
 1. `src/test_config_generator.py` 的 `_generate_from_cases` 对配置内 `case.dat_dir` 原样透传，未做 `to_posix`。当 `dat_dir` 本身是反斜杠写法时，产出 JSON 会出现反斜杠；正常链路由本工具生成或 `Config.save()` 保存时已是正斜杠，因此未计为失败。若要让"dat_dir 一律正斜杠"成为硬约束，在该分支补一次 `to_posix` 即可。
 2. `src/executor.py` 的 `_should_copy_project_file` 在 `.settings` 分支之前先过滤 `.prefs`，所以 `.settings/org.eclipse.core.resources.prefs` 不会被复制（`.settings` 分支只对非 `.prefs` 文件生效）。工程复制后 Eclipse 的源文件编码等偏好不会随工程走。
 3. `src/flash_encrypt.py` 成功文案固定为 `FLASH0~3.dat`，实际实例数由根脚本 `N_INST` 决定；当前 `N_INST=4`，无实际影响。
+4. `src/executor.py` 的 `_collect_results` 当前**没有任何生产调用点**（全仓仅测试调用），疑似历史遗留；其行为还有两处静默：summary 为空时返回空列表而不是逐用例 `NoResult`；summary 中缺少某用例时该用例直接从结果中消失。对应 `test_empty_summary_yields_no_results`、`test_incomplete_summary_only_returns_listed_cases`。
+5. `src/generator.py` 的替换清单不含通用 `name="..."` 属性（只处理 `<name>`、`<project>`、`artifactName`、`projectName`、`.out/.map/.com.ti`）。当前真实模板的 `.cproject` 使用 `${ProjName}` 宏，因此暂无影响；若换用带 `name="工程名"` 属性的模板，该属性不会被改写。
+6. `src/generator.py` 目标目录已存在且 `clean=False` 时返回 `success=True` 且 `error="目录已存在，跳过"`。跳过语义与成功标志混用，上层若只看 `success` 会误以为工程已重新生成。对应 `test_existing_project_is_skipped_when_clean_false`。
 
 ## 新增用例约定
 
