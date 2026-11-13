@@ -109,13 +109,13 @@ class ProjectBuilder:
                 logger.debug("  已清理旧的 .metadata 目录")
 
             # 运行一次初始化构建（使用第一个工程）
+            # 注意：初始化构建后必须保留 .metadata。若此处再次删除，正式构建的首个工程会重新
+            # 走 CCS 的 Clean-only build（该步骤调用 make，而 CCS 只自带 gmake.exe），
+            # 导致字母序第一个工程必然构建失败；保留后首个正式构建可直接用 gmake 正常编译。
             if projects:
                 logger.info("  运行初始化构建，避免后续构建触发 Eclipse bug...")
                 init_project = projects[0]
                 self._run_init_build(init_project)
-                # 再次清理 .metadata
-                if metadata_dir.exists():
-                    shutil.rmtree(metadata_dir, ignore_errors=True)
 
             results = self._build_projects(projects)
             
