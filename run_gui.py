@@ -24,7 +24,7 @@ from pathlib import Path
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.runtime_paths import app_root, app_path, bundle_root, is_frozen
+from src.runtime_paths import app_root, app_path, bundle_root, is_frozen, resource_path
 
 
 def _qt_plugin_root():
@@ -176,6 +176,43 @@ def _install_chinese_button_filter(app):
         pass
 
 
+def _enable_high_dpi():
+    """
+    启用高 DPI 缩放与高分辨率图标
+
+    必须在创建 QApplication 之前调用，否则 Qt 已按默认策略初始化窗口。
+    PassThrough 让 Windows 125%/150% 等非整数缩放下窗口不被二次取整放大。
+    """
+    from PyQt5.QtCore import Qt, QCoreApplication
+
+    QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QCoreApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    try:
+        from PyQt5.QtGui import QGuiApplication
+        QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    except Exception:
+        pass
+
+
+def _apply_app_identity(app):
+    """
+    应用标识与图标：组织名、窗口图标（任务栏/标题栏共用）
+
+    图标随包放在 gui/assets/app.ico，源码模式与打包模式都能通过 resource_path 找到。
+    """
+    from PyQt5.QtGui import QIcon
+    from gui.utils.build_info import VERSION
+
+    app.setOrganizationName("AutoTest")
+    app.setApplicationName("AutoTest GUI")
+    app.setApplicationVersion(VERSION)
+
+    icon_path = resource_path("gui/assets/app.ico")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
+
 def check_dependencies():
     """检查依赖是否安装"""
     try:
@@ -240,6 +277,9 @@ def _run(args):
     from PyQt5.QtWidgets import QApplication
     from gui.main_window import MainWindow
 
+    # 高 DPI 必须在 QApplication 创建前启用
+    _enable_high_dpi()
+
     # 创建应用程序
     app = QApplication(sys.argv)
 
@@ -248,9 +288,8 @@ def _run(args):
         from PyQt5.QtCore import QCoreApplication
         QCoreApplication.addLibraryPath(str(qt_plugins))
 
-    app.setOrganizationName("AutoTest")
-    app.setApplicationName("AutoTest GUI")
-    app.setApplicationVersion("1.0.0")
+    # 组织名/应用名/窗口图标（标题栏与任务栏共用）
+    _apply_app_identity(app)
 
     # 标准对话框按钮中文化（确定/取消/是/否）
     _install_qt_translator(app)

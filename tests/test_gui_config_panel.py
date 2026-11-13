@@ -8,6 +8,7 @@
 
 import os
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -136,6 +137,164 @@ class ConfigPanelTest(TempTestCase):
         ]})
         self.panel.load_config(cfg_ram)
         self.assertIs(self.panel.get_config_dict()["is_flash"], False)
+
+
+class ValidateRequiredPathsTest(TempTestCase):
+    """保存前校验：必填路径不存在时标红并阻止保存"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        super().setUp()
+        self.panel = ConfigPanel()
+        self.addCleanup(self.panel.deleteLater)
+
+    def _create_required_paths(self):
+        self.make_dir("workspace")
+        tools = self.make_dir("tools")
+        (tools / "ccs.exe").write_text("", encoding="utf-8")
+        (tools / "dss.bat").write_text("", encoding="utf-8")
+
+    def test_existing_paths_pass_without_red_border(self):
+        self._create_required_paths()
+        self.panel.load_config(make_config(self.tmp))
+
+        with mock.patch("gui.widgets.config_panel.QMessageBox.warning") as warn:
+            self.assertTrue(self.panel.validate())
+
+        warn.assert_not_called()
+        self.assertNotIn("C62828", self.panel.path_selectors["generate_dir"]
+                         .path_edit.styleSheet())
+
+    def test_missing_paths_mark_red_and_list_each_item(self):
+        self.panel.load_config(make_config(self.tmp))
+
+        with mock.patch("gui.widgets.config_panel.QMessageBox.warning") as warn:
+            self.assertFalse(self.panel.validate())
+
+        message = warn.call_args[0][2]
+        for name in ("工作区目录", "CCS 可执行文件", "DSS 执行器"):
+            self.assertIn(name, message)
+        for key in ("generate_dir", "ccs_executable", "ccs_dss"):
+            selector = self.panel.path_selectors[key]
+            self.assertIn("C62828", selector.path_edit.styleSheet())
+            self.assertIn("不存在", selector.path_edit.toolTip())
+
+    def test_empty_required_field_blocks_save(self):
+        self._create_required_paths()
+        self.panel.load_config(make_config(self.tmp))
+        self.panel.path_selectors["generate_dir"].set_path("")
+
+        with mock.patch("gui.widgets.config_panel.QMessageBox.warning") as warn:
+            self.assertFalse(self.panel.validate())
+
+        self.assertIn("不能为空", warn.call_args[0][2])
+        self.assertIn("不能为空",
+                      self.panel.path_selectors["generate_dir"].path_edit.toolTip())
+
+    def test_relative_path_resolved_against_config_dir(self):
+        self.make_dir("config", "workspace")
+        tools = self.make_dir("config", "tools")
+        (tools / "ccs.exe").write_text("", encoding="utf-8")
+        (tools / "dss.bat").write_text("", encoding="utf-8")
+        cfg = make_config(
+            self.tmp,
+            config_path=self.tmp / "config" / "config.json",
+        )
+        self.panel.load_config(cfg)
+        # 界面上输入相对路径时，按配置文件所在目录解析
+        self.panel.path_selectors["generate_dir"].set_path("workspace")
+        self.panel.path_selectors["ccs_executable"].set_path("tools/ccs.exe")
+        self.panel.path_selectors["ccs_dss"].set_path("tools/dss.bat")
+
+        with mock.patch("gui.widgets.config_panel.QMessageBox.warning") as warn:
+            self.assertTrue(self.panel.validate())
+
+        warn.assert_not_called()
+
+    def test_error_state_cleared_on_next_validation(self):
+        self.panel.load_config(make_config(self.tmp))
+        with mock.patch("gui.widgets.config_panel.QMessageBox.warning"):
+            self.assertFalse(self.panel.validate())
+
+        self._create_required_paths()
+        with mock.patch("gui.widgets.config_panel.QMessageBox.warning") as warn:
+            self.assertTrue(self.panel.validate())
+
+        warn.assert_not_called()
+        self.assertEqual(self.panel.path_selectors["generate_dir"]
+                         .path_edit.styleSheet(), "")
+
+
+class MemoryTableLayoutTest(TempTestCase):
+    """内存段表格：末列拉伸 + 空表占位提示"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        super().setUp()
+        self.panel = ConfigPanel()
+        self.addCleanup(self.panel.deleteLater)
+
+    def test_last_column_stretches(self):
+        self.assertTrue(self.panel.memory_table.horizontalHeader()
+                        .stretchLastSection())
+
+    def test_empty_hint_visible_then_hidden_after_add(self):
+        self.assertFalse(self.panel.memory_empty_label.isHidden())
+
+        self.panel.on_add_memory_segment()
+        self.assertEqual(self.panel.memory_table.rowCount(), 1)
+        self.assertTrue(self.panel.memory_empty_label.isHidden())
+
+    def test_empty_hint_returns_after_removing_all_rows(self):
+        self.panel.on_add_memory_segment()
+        self.panel.memory_table.selectRow(0)
+
+        with mock.patch("gui.widgets.config_panel.QMessageBox.warning"):
+            self.panel.on_remove_memory_segment()
+
+        self.assertEqual(self.panel.memory_table.rowCount(), 0)
+        self.assertFalse(self.panel.memory_empty_label.isHidden())
+
+
+class CollapsibleConfigGroupsTest(TempTestCase):
+    """配置页过长：高级分组默认折叠，可展开"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        super().setUp()
+        self.panel = ConfigPanel()
+        self.addCleanup(self.panel.deleteLater)
+
+    def test_memory_and_export_groups_collapsed_by_default(self):
+        from gui.widgets.collapsible_group import CollapsibleGroupBox
+
+        groups = {g.title_text: g for g in self.panel.findChildren(CollapsibleGroupBox)}
+        self.assertIn("内存导出配置", groups)
+        self.assertIn("导出时间点配置", groups)
+        for title in ("内存导出配置", "导出时间点配置"):
+            self.assertFalse(groups[title].is_expanded(), title)
+            self.assertTrue(groups[title].content.isHidden(), title)
+
+    def test_toggle_expands_and_collapses(self):
+        from gui.widgets.collapsible_group import CollapsibleGroupBox
+
+        group = next(g for g in self.panel.findChildren(CollapsibleGroupBox)
+                     if g.title_text == "内存导出配置")
+        group.toggle_button.setChecked(True)
+        self.assertTrue(group.is_expanded())
+        self.assertFalse(group.content.isHidden())
+
+        group.toggle_button.setChecked(False)
+        self.assertTrue(group.content.isHidden())
 
 
 if __name__ == "__main__":

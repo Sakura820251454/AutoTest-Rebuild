@@ -88,3 +88,14 @@ class PathSelector(QWidget):
     def set_placeholder(self, text: str):
         """设置占位符文本"""
         self.path_edit.setPlaceholderText(text)
+
+    def set_error(self, message: str):
+        """标红：路径不可用时突出输入框并给出原因"""
+        self.path_edit.setStyleSheet(
+            "QLineEdit { border: 1px solid #C62828; background-color: #FDECEA; }")
+        self.path_edit.setToolTip(message)
+
+    def clear_error(self):
+        """清除标红状态"""
+        self.path_edit.setStyleSheet("")
+        self.path_edit.setToolTip("")

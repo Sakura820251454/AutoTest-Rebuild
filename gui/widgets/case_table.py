@@ -29,6 +29,8 @@ class CaseTable(QTableWidget):
     # 状态对应的显示文本和颜色
     STATUS_DISPLAY = {
         "pending": ("等待", "#808080"),  # 灰色
+        "ready": ("就绪", "#00AA00"),  # 预扫描：已有 .out
+        "missing_out": ("缺 .out", "#D97706"),  # 预扫描：有工程但没有 .out
         "running": ("运行中", "#FFA500"),  # 橙色
         "success": ("成功", "#00AA00"),  # 绿色
         "failed": ("失败", "#FF0000"),  # 红色

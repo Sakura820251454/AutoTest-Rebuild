@@ -98,6 +98,7 @@ class TestExecutor:
         # 回调函数
         self.on_case_started: Optional[callable] = None
         self.on_case_finished: Optional[callable] = None
+        self.on_batch_started: Optional[callable] = None  # 批次开始回调 (第几批, 共几批)
         self.on_hardware_error: Optional[callable] = None  # 硬件连接错误回调
         self.on_retry: Optional[callable] = None  # 重试回调 (batch_number, retry_count, max_retries)
         self.should_stop: Optional[callable] = None  # 停止检查回调
@@ -235,6 +236,7 @@ class TestExecutor:
             # 使用二进制模式追加（DSS Java 进程输出 UTF-8 字节流）
             with open(console_log, "ab") as f_out:
                 batch_index = 0
+                total_batches = start_batch + len(batches)
                 while batch_index < len(batches):
                     batch = batches[batch_index]
                     i = start_batch + 1 + batch_index
@@ -246,7 +248,13 @@ class TestExecutor:
                         self._mark_remaining_batches_as_skipped(batches[batch_index:])
                         break
 
-                    logger.info(f"执行第 {i}/{start_batch + len(batches)} 批 ({len(batch)} 个用例)")
+                    logger.info(f"执行第 {i}/{total_batches} 批 ({len(batch)} 个用例)")
+
+                    if self.on_batch_started:
+                        try:
+                            self.on_batch_started(i, total_batches)
+                        except Exception as e:
+                            logger.error(f"通知批次开始失败: 第 {i} 批, 错误: {e}")
 
                     # 通知批次中的用例开始
                     logger.info(f"通知批次开始，共 {len(batch)} 个用例")

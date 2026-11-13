@@ -46,7 +46,8 @@ class PipelineStatusTest(TempTestCase):
         worker.finished.connect(lambda ok: state.__setitem__("finished", bool(ok)))
         worker.log_message.connect(state["logs"].append)
         worker.log_entry.connect(collect_entry)
-        worker.progress_updated.connect(lambda p, m: state["progress"].append((p, m)))
+        worker.stage_progress.connect(
+            lambda stage, p, m: state["progress"].append((stage, p, m)))
         worker.run()
         return state
 
@@ -56,8 +57,8 @@ class PipelineStatusTest(TempTestCase):
 
         self.assertIs(state["finished"], False)
         self.assertTrue(any("工作区目录不存在" in m for m in state["logs"]))
-        self.assertIn((0, "执行失败"), state["progress"])
-        self.assertNotIn((100, "执行完成"), state["progress"])
+        self.assertTrue(any(stage == "test" and p == 0 for stage, p, _ in state["progress"]))
+        self.assertFalse(any(p >= 100 for _, p, _ in state["progress"]))
 
     def test_workspace_without_out_reports_failure(self):
         cfg = make_config(self.tmp)
@@ -66,7 +67,18 @@ class PipelineStatusTest(TempTestCase):
 
         self.assertIs(state["finished"], False)
         self.assertTrue(any("没有找到任何 .out" in m for m in state["logs"]))
-        self.assertIn((0, "执行失败"), state["progress"])
+        self.assertTrue(any(stage == "test" and p == 0 for stage, p, _ in state["progress"]))
+        self.assertFalse(any(p >= 100 for _, p, _ in state["progress"]))
+
+    def test_all_steps_success_reports_pipeline_success(self):
+        """三步都成功时，流水线必须整体返回成功（避免 final_finished 收到 None 误报失败）"""
+        cfg = make_config(self.tmp)
+        worker = PipelineWorker(cfg, "generate")
+        with mock.patch.object(pipeline_module.Config, "load", return_value=cfg), \
+                mock.patch.object(worker, "_execute_generate", return_value=True), \
+                mock.patch.object(worker, "_execute_build", return_value=True), \
+                mock.patch.object(worker, "_execute_test", return_value=(True, 1)):
+            self.assertTrue(worker._execute_pipeline("ignored.json", worker._get_steps()))
 
     def test_unreadable_results_dir_reports_failure_with_readable_message(self):
         cfg = make_config(self.tmp)
@@ -83,7 +95,7 @@ class PipelineStatusTest(TempTestCase):
 
         self.assertIs(state["finished"], False)
         self.assertTrue(any("路径配置错误" in m and "权限拒绝" in m for m in state["logs"]))
-        self.assertTrue(any("执行失败" in msg for _, msg in state["progress"]))
+        self.assertFalse(any(p >= 100 for _, p, _ in state["progress"]))
 
 
 if __name__ == "__main__":

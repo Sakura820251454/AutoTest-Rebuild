@@ -25,13 +25,13 @@ from PyQt5.QtWidgets import (
     QFileDialog, QMessageBox, QApplication, QMenuBar, QMenu, QAction
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QSettings, QUrl
-from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtGui import QDesktopServices, QIcon
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import Config
 from src.logger import get_logger
-from src.runtime_paths import app_path
+from src.runtime_paths import app_path, resource_path
 from .utils.error_messages import describe_exception, format_error
 from .utils.message_boxes import critical, information, warning
 from .widgets.config_panel import ConfigPanel
@@ -82,6 +82,11 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("AutoTest GUI - TI C2000 DSP 自动化测试")
         self.setMinimumSize(1000, 700)
+
+        # 标题栏/任务栏图标（QApplication 已设置时保持一致）
+        icon_path = resource_path("gui/assets/app.ico")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         
         self._setup_ui()
         self._setup_menu()
@@ -120,6 +125,7 @@ class MainWindow(QMainWindow):
         # 执行面板
         self.execute_panel = ExecutePanel()
         self.tab_widget.addTab(self.execute_panel, "执行")
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
         
         # 日志面板
         self.log_panel = LogPanel()
@@ -621,9 +627,12 @@ class MainWindow(QMainWindow):
         return "test", "工程已就绪，可以直接测试"
     
     def set_status(self, message: str):
-        """设置状态栏消息"""
+        """设置状态栏消息
+
+        只更新右侧的就绪状态，避免 showMessage 在左侧重复同一句话并挤掉
+        硬件/阶段信息。
+        """
         self.ready_label.setText(message)
-        self.status_bar.showMessage(message, 5000)
     
     # ========== 事件处理 ==========
     
@@ -817,10 +826,16 @@ class MainWindow(QMainWindow):
         dialog = AboutDialog(self)
         dialog.exec()
     
+    def on_tab_changed(self, index: int):
+        """切到执行页时后台预扫描工作区，提前显示用例与就绪状态"""
+        if self.tab_widget.widget(index) is self.execute_panel:
+            self.execute_panel.start_case_scan()
+
     def closeEvent(self, event):
         """关闭事件处理"""
         # 检查是否有未保存的更改
         # TODO: 实现配置修改检测
+        self.execute_panel.shutdown_background_tasks()
         event.accept()
 
 

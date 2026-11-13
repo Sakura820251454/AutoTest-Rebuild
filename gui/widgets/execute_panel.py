@@ -6,7 +6,7 @@
 用于控制测试执行和显示进度；提供可关闭的错误条与“打开结果目录”入口
 
 @input Config、PipelineWorker 信号
-@output execution_started/execution_finished/log_message/log_entry 信号、用例状态表
+@output execution_started/execution_finished/log_message/log_entry 信号、三步步骤条与加权总进度、用例状态表
 @pos “执行”标签页，负责任务启动/停止、进度展示与错误提示
 
 一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
@@ -19,11 +19,11 @@ from typing import Optional, Dict, List
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QProgressBar, QGroupBox,
-    QRadioButton, QButtonGroup, QMessageBox, QTextEdit,
+    QComboBox, QMessageBox, QTextEdit,
     QCheckBox, QFrame
 )
 from .no_scroll_spinbox import NoScrollSpinBox as QSpinBox
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QElapsedTimer, pyqtSignal
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -33,7 +33,41 @@ from .case_table import CaseTable
 from ..utils.error_messages import format_error
 from ..utils.message_boxes import warning
 from ..workers.pipeline_worker import PipelineWorker
+from ..workers.case_scanner import CaseScanWorker
 from ..dialogs.hardware_error_dialog import HardwareErrorDialog
+
+# 三步步骤条：顺序、界面名称、加权总进度权重（只对本次参与的阶段重新归一化）
+STAGE_ORDER = ("generate", "build", "test")
+STAGE_NAMES = {"generate": "生成", "build": "构建", "test": "测试"}
+STAGE_WEIGHTS = {"generate": 15, "build": 25, "test": 60}
+STEP_ICONS = {"pending": "○", "running": "●", "done": "✓", "failed": "✗",
+              "stopped": "■", "skipped": "—"}
+STEP_COLORS = {"pending": "#888888", "running": "#0066CC", "done": "#2E7D32",
+               "failed": "#C62828", "stopped": "#B26A00", "skipped": "#AAAAAA"}
+
+
+def stages_from(start_stage: str):
+    """从起始阶段推出本次参与的阶段（例如“仅测试”只计测试）"""
+    if start_stage not in STAGE_ORDER:
+        return list(STAGE_ORDER)
+    return list(STAGE_ORDER[STAGE_ORDER.index(start_stage):])
+
+
+def compute_weighted_progress(stage_percents: Dict[str, int], stages) -> int:
+    """按参与阶段归一化权重，返回 0-100 的总进度
+
+    每个阶段内部 0→100，总进度 = Σ(权重×阶段进度)/Σ权重。这样“仅测试”也能
+    从 0 走到 100，而完整执行不会出现三个 0→100 的重复循环。
+    """
+    active = [s for s in STAGE_ORDER if s in stages] or list(STAGE_ORDER)
+    total_weight = sum(STAGE_WEIGHTS[s] for s in active)
+    if total_weight <= 0:
+        return 0
+    done = 0
+    for stage in active:
+        percent = max(0, min(100, int(stage_percents.get(stage, 0))))
+        done += STAGE_WEIGHTS[stage] * percent
+    return int(round(done / total_weight))
 
 
 class ExecutePanel(QWidget):
@@ -53,6 +87,7 @@ class ExecutePanel(QWidget):
         self.current_stage: str = "unknown"
         self.stage_description: str = ""
         self.worker: Optional[PipelineWorker] = None
+        self._scan_worker: Optional[CaseScanWorker] = None  # 用例预扫描线程
         self._config_available: bool = False
         self._no_config_reason: str = "尚未加载配置"
         
@@ -63,7 +98,23 @@ class ExecutePanel(QWidget):
         self.stopping: bool = False  # 已点击停止、等待工作线程收尾
         self.stopped: bool = False  # 本次执行因停止而结束
         self.run_timestamp: Optional[str] = None  # 用于保持断点续测结果文件时间戳一致
-        
+
+        # 三步进度：各阶段内部百分比 + 本次参与的阶段 + 总进度不回退
+        self._stage_percent: Dict[str, int] = {s: 0 for s in STAGE_ORDER}
+        self._active_stages = list(STAGE_ORDER)
+        self._progress_floor = 0
+        self._step_states: Dict[str, str] = {s: "pending" for s in STAGE_ORDER}
+        self.step_labels: Dict[str, QLabel] = {}
+
+        # 测试阶段明细（第 x/N 批、当前用例、已用时间）
+        self._test_batch = 0
+        self._test_batch_total = 0
+        self._current_case = ""
+        self._test_elapsed = QElapsedTimer()
+        self._test_timer = QTimer(self)
+        self._test_timer.setInterval(500)
+        self._test_timer.timeout.connect(self._update_test_detail)
+
         self._setup_ui()
     
     def _setup_ui(self):
@@ -113,6 +164,23 @@ class ExecutePanel(QWidget):
         stage_layout.addWidget(self.stage_label)
         stage_layout.addStretch()
         control_layout.addLayout(stage_layout)
+
+        # 三步步骤条（生成 → 构建 → 测试）：显示各阶段状态，配合下方加权总进度
+        step_layout = QHBoxLayout()
+        step_layout.setSpacing(6)
+        for idx, stage in enumerate(STAGE_ORDER):
+            chip = QLabel()
+            chip.setAlignment(Qt.AlignCenter)
+            chip.setMinimumWidth(84)
+            self.step_labels[stage] = chip
+            self._apply_step_state(stage, "pending")
+            step_layout.addWidget(chip)
+            if idx < len(STAGE_ORDER) - 1:
+                arrow = QLabel("→")
+                arrow.setStyleSheet("color: #999999;")
+                step_layout.addWidget(arrow)
+        step_layout.addStretch()
+        control_layout.addLayout(step_layout)
         
         # 阶段描述
         self.stage_desc_label = QLabel("请先加载配置文件")
@@ -129,27 +197,14 @@ class ExecutePanel(QWidget):
         # 执行选项
         control_layout.addWidget(QLabel("执行选项:"))
         
-        self.stage_button_group = QButtonGroup(self)
-        
-        self.full_radio = QRadioButton("完整执行 (生成 → 构建 → 测试)")
-        self.stage_button_group.addButton(self.full_radio, 0)
-        control_layout.addWidget(self.full_radio)
-        
-        self.generate_radio = QRadioButton("从生成开始")
-        self.stage_button_group.addButton(self.generate_radio, 1)
-        control_layout.addWidget(self.generate_radio)
-        
-        self.build_radio = QRadioButton("从构建开始")
-        self.stage_button_group.addButton(self.build_radio, 2)
-        control_layout.addWidget(self.build_radio)
-        
-        self.test_radio = QRadioButton("仅测试")
-        self.stage_button_group.addButton(self.test_radio, 3)
-        control_layout.addWidget(self.test_radio)
-        
-        # 默认选中完整执行
-        self.full_radio.setChecked(True)
-        
+        control_layout.addWidget(QLabel("起始阶段:"))
+        self.start_stage_combo = QComboBox()
+        self.start_stage_combo.addItem("生成（生成 → 构建 → 测试）", "generate")
+        self.start_stage_combo.addItem("构建（构建 → 测试）", "build")
+        self.start_stage_combo.addItem("测试（仅测试）", "test")
+        self.start_stage_combo.setCurrentIndex(0)
+        control_layout.addWidget(self.start_stage_combo)
+
         # 分隔线
         line2 = QLabel()
         line2.setFrameShape(QLabel.Shape.HLine)
@@ -192,6 +247,12 @@ class ExecutePanel(QWidget):
         stats_layout.addWidget(self.stats_label)
         stats_layout.addStretch()
         control_layout.addLayout(stats_layout)
+
+        # 测试阶段明细：第 x/N 批 | 当前用例 | 已用时间
+        self.test_detail_label = QLabel("")
+        self.test_detail_label.setStyleSheet("color: #555555;")
+        self.test_detail_label.setVisible(False)
+        control_layout.addWidget(self.test_detail_label)
         
         layout.addWidget(control_group)
         
@@ -268,6 +329,52 @@ class ExecutePanel(QWidget):
         if reason:
             self._no_config_reason = reason
         self._refresh_start_btn()
+
+    def start_case_scan(self):
+        """切到执行页时后台预扫描 generate_dir，运行前就显示用例与就绪状态"""
+        if self.config is None or not self._config_available:
+            return
+        if self.worker and self.worker.isRunning():
+            return
+        if self._scan_worker and self._scan_worker.isRunning():
+            return
+
+        generate_dir = getattr(self.config.paths, "generate_dir", None)
+        if not generate_dir:
+            return
+
+        self._scan_worker = CaseScanWorker(Path(generate_dir), self)
+        self._scan_worker.scanned.connect(self.on_scan_finished)
+        self.stats_label.setText("正在扫描用例…")
+        self._scan_worker.start()
+
+    def on_scan_finished(self, rows: list):
+        """预扫描完成：填充用例表并标注“就绪/缺 .out”"""
+        if self.worker and self.worker.isRunning():
+            return  # 已在执行，不要覆盖运行中的状态表
+
+        self.case_table.clear_cases()
+        ready = 0
+        missing = 0
+        for name, status, message in rows:
+            self.case_table.add_case(name, status=status, message=message)
+            if status == "ready":
+                ready += 1
+            elif status == "missing_out":
+                missing += 1
+
+        total = len(rows)
+        if total:
+            self.stats_label.setText(
+                f"预扫描: {total} 个用例（就绪 {ready}，缺 .out {missing}）")
+        else:
+            self.stats_label.setText("预扫描: 工作区中没有发现用例")
+
+    def shutdown_background_tasks(self):
+        """关闭窗口前停掉后台预扫描，避免线程未结束就销毁控件"""
+        if self._scan_worker and self._scan_worker.isRunning():
+            self._scan_worker.cancel()
+            self._scan_worker.wait(2000)
 
     def _refresh_start_btn(self):
         """按“配置可用 + 未在执行”刷新开始按钮状态"""
@@ -348,52 +455,49 @@ class ExecutePanel(QWidget):
         # 更新执行选项可用性
         self._update_execution_options()
     
+    def _set_stage_item_enabled(self, stage: str, enabled: bool):
+        """启用/禁用起始阶段下拉里的某一项"""
+        index = self.start_stage_combo.findData(stage)
+        if index < 0:
+            return
+        item = self.start_stage_combo.model().item(index)
+        if item is not None:
+            item.setEnabled(enabled)
+
+    def _select_stage(self, stage: str):
+        """选中起始阶段（该项禁用时也允许程序设置为当前值）"""
+        index = self.start_stage_combo.findData(stage)
+        if index >= 0:
+            self.start_stage_combo.setCurrentIndex(index)
+
     def _update_execution_options(self):
-        """更新执行选项可用性"""
-        if self.current_stage == "generate":
-            self.full_radio.setEnabled(True)
-            self.generate_radio.setEnabled(True)
-            self.build_radio.setEnabled(False)
-            self.test_radio.setEnabled(False)
-            self.full_radio.setChecked(True)
-        elif self.current_stage == "build":
-            self.full_radio.setEnabled(True)
-            self.generate_radio.setEnabled(True)
-            self.build_radio.setEnabled(True)
-            self.test_radio.setEnabled(False)
-            self.build_radio.setChecked(True)
-        elif self.current_stage == "test":
-            self.full_radio.setEnabled(True)
-            self.generate_radio.setEnabled(True)
-            self.build_radio.setEnabled(True)
-            self.test_radio.setEnabled(True)
-            self.test_radio.setChecked(True)
-        else:  # unknown
-            self.full_radio.setEnabled(True)
-            self.generate_radio.setEnabled(True)
-            self.build_radio.setEnabled(True)
-            self.test_radio.setEnabled(True)
-            self.full_radio.setChecked(True)
-    
+        """按已检测到的阶段限制可选起始阶段，并默认选中合适项"""
+        allowed = {
+            "generate": ("generate",),
+            "build": ("generate", "build"),
+            "test": ("generate", "build", "test"),
+            "unknown": ("generate", "build", "test"),
+        }.get(self.current_stage, ("generate", "build", "test"))
+
+        for stage in STAGE_ORDER:
+            self._set_stage_item_enabled(stage, stage in allowed)
+
+        if self.current_stage in ("build", "test"):
+            self._select_stage(self.current_stage)
+        elif self.current_stage == "generate":
+            self._select_stage("generate")
+
     def _get_selected_stage(self) -> str:
         """获取选中的起始阶段"""
-        checked_id = self.stage_button_group.checkedId()
-        
-        if checked_id == 0:
-            return "generate"
-        elif checked_id == 1:
-            return "generate"
-        elif checked_id == 2:
-            return "build"
-        else:  # 3
-            return "test"
-    
+        return self.start_stage_combo.currentData() or "generate"
+
     def on_resume_checkbox_changed(self, state):
         """断点续测复选框状态改变"""
         self.resume_batch_spin.setEnabled(state == Qt.Checked)
         if state == Qt.Checked:
-            # 如果勾选了断点续测，自动选择"仅测试"
-            self.test_radio.setChecked(True)
+            # 断点续测只跑测试，自动把起始阶段切到“测试”
+            self._set_stage_item_enabled("test", True)
+            self._select_stage("test")
     
     def start_execution(self):
         """开始执行"""
@@ -462,7 +566,7 @@ class ExecutePanel(QWidget):
             for case in self.config.cases:
                 self.case_table.add_case(case.name, "pending")
         
-        self.progress_bar.setValue(0)
+        self._reset_progress(start_stage)
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.stats_label.setText("执行中...")
@@ -488,7 +592,8 @@ class ExecutePanel(QWidget):
             resume_test=resume_test,
             run_timestamp=self.run_timestamp
         )
-        self.worker.progress_updated.connect(self.on_progress_updated)
+        self.worker.stage_progress.connect(self.on_stage_progress)
+        self.worker.test_batch_started.connect(self.on_test_batch_started)
         self.worker.case_list_loaded.connect(self.on_case_list_loaded)
         self.worker.case_started.connect(self.on_case_started)
         self.worker.case_finished.connect(self.on_case_finished)
@@ -509,16 +614,78 @@ class ExecutePanel(QWidget):
             self.stats_label.repaint()
             self.worker.stop()
     
-    def on_progress_updated(self, percent: int, message: str):
-        """
-        进度更新处理
+    def _reset_progress(self, start_stage: str):
+        """开始新一轮执行：按起始阶段重置步骤条与总进度（不回退从 0 开始）"""
+        self._active_stages = stages_from(start_stage)
+        self._stage_percent = {s: 0 for s in STAGE_ORDER}
+        self._progress_floor = 0
+        for stage in STAGE_ORDER:
+            if stage in self._active_stages:
+                self._apply_step_state(stage, "pending")
+            else:
+                self._apply_step_state(stage, "skipped")
+        self.progress_bar.setValue(0)
+        self._test_batch = 0
+        self._test_batch_total = 0
+        self._current_case = ""
+        self._test_elapsed.start()
+        self._test_timer.start()
+        self._update_test_detail()
 
-        Args:
-            percent: 进度百分比
-            message: 进度消息
-        """
-        self.progress_bar.setValue(percent)
+    def _apply_step_state(self, stage: str, state: str):
+        """更新某个步骤的状态（pending/running/done/failed/stopped/skipped）"""
+        self._step_states[stage] = state
+        label = self.step_labels.get(stage)
+        if label is None:
+            return
+        icon = STEP_ICONS.get(state, "○")
+        color = STEP_COLORS.get(state, "#888888")
+        weight = "bold" if state == "running" else "normal"
+        label.setText(f"{icon} {STAGE_NAMES[stage]}")
+        label.setStyleSheet(
+            f"color: {color}; font-weight: {weight};"
+            "border: 1px solid #DDDDDD; border-radius: 10px; padding: 2px 8px;")
+        label.setProperty("stepState", state)
+
+    def on_stage_progress(self, stage: str, percent: int, message: str):
+        """阶段内进度：只更新该阶段百分比，再按权重汇总成总进度"""
+        if stage in self._stage_percent:
+            self._stage_percent[stage] = max(self._stage_percent[stage], percent)
+        if percent >= 100:
+            self._apply_step_state(stage, "done")
+        else:
+            self._apply_step_state(stage, "running")
         self.stats_label.setText(message)
+        self._refresh_total_progress()
+
+    def _refresh_total_progress(self):
+        """总进度：加权汇总且只增不减（停止时不会回跳）"""
+        value = compute_weighted_progress(self._stage_percent, self._active_stages)
+        value = max(self._progress_floor, value)
+        self._progress_floor = value
+        self.progress_bar.setValue(value)
+
+    def on_test_batch_started(self, current: int, total: int):
+        """测试批次开始：记录“第 x/N 批”，用于测试阶段明细"""
+        self._test_batch = current
+        self._test_batch_total = total
+        self._update_test_detail()
+
+    def _update_test_detail(self):
+        """刷新测试阶段明细：第 x/N 批 | 当前用例 | 已用时间"""
+        parts = []
+        if self._test_batch_total > 0:
+            parts.append(f"第 {self._test_batch}/{self._test_batch_total} 批")
+        if self._current_case:
+            parts.append(f"当前用例: {self._current_case}")
+        if self._test_elapsed.isValid():
+            seconds = self._test_elapsed.elapsed() / 1000.0
+            if seconds < 60:
+                parts.append(f"已用 {seconds:.1f}s")
+            else:
+                parts.append(f"已用 {int(seconds // 60)}m{int(seconds % 60)}s")
+        self.test_detail_label.setText(" | ".join(parts))
+        self.test_detail_label.setVisible(bool(parts))
 
     def on_case_list_loaded(self, case_names: list):
         """
@@ -568,6 +735,8 @@ class ExecutePanel(QWidget):
             case_name: 用例名称
         """
         self.case_table.update_case(case_name, status="running")
+        self._current_case = case_name
+        self._update_test_detail()
         self.log_message.emit(f"开始执行用例: {case_name}")
     
     def on_case_finished(self, case_name: str, status: str, duration: float):
@@ -671,12 +840,27 @@ class ExecutePanel(QWidget):
         worker = self.worker
         stopped = bool(worker and getattr(worker, "stop_requested", False))
         self.stopped = stopped
+        self._test_timer.stop()
+        self._update_test_detail()
+
+        running_stages = [s for s in self._active_stages if self._step_states.get(s) == "running"]
+
+        if stopped:
+            for stage in running_stages:
+                self._apply_step_state(stage, "stopped")
+        elif success:
+            for stage in self._active_stages:
+                self._apply_step_state(stage, "done")
+        else:
+            for stage in running_stages:
+                self._apply_step_state(stage, "failed")
 
         if stopped:
             # 停止不是失败：保留工作线程给出的摘要（已停止（完成 x/N）| 成功/失败/跳过）
             summary = getattr(worker, "final_summary", "") or "已停止"
             self.stats_label.setText(summary)
         elif success:
+            self._progress_floor = 100
             self.progress_bar.setValue(100)
             self.stats_label.setText("执行完成")
             # 执行成功，清除断点续测设置

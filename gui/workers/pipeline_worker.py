@@ -6,7 +6,7 @@
 在后台执行测试流水线，调用与命令行相同的业务逻辑
 
 @input Config、起始阶段、断点续测参数
-@output progress_updated/case_finished/log_message/log_entry/finished 等信号
+@output stage_progress/test_batch_started/case_finished/log_message/log_entry/finished 等信号
 @pos GUI 与业务逻辑之间的线程边界；日志按真实级别上报（失败/堆栈为 ERROR）
 
 一旦我被更新务必更新我的开头注释以及所属文件夹的 README.md
@@ -93,7 +93,8 @@ def format_execution_summary(stopped, success, failed, skipped, total,
 class PipelineWorker(QThread):
     """流水线执行工作线程"""
 
-    progress_updated = pyqtSignal(int, str)  # 进度更新(百分比, 消息)
+    stage_progress = pyqtSignal(str, int, str)  # 阶段内进度(阶段, 0-100, 消息)
+    test_batch_started = pyqtSignal(int, int)  # 测试批次开始(第 x 批, 共 N 批)
     case_list_loaded = pyqtSignal(list)  # 用例列表加载完成(用例名称列表)
     case_started = pyqtSignal(str)  # 用例开始
     case_finished = pyqtSignal(str, str, float)  # 用例完成(名称, 状态, 耗时)
@@ -155,13 +156,12 @@ class PipelineWorker(QThread):
                 success = self._execute_pipeline(config_path, steps)
 
                 if success and self.is_running:
-                    self.progress_updated.emit(100, "执行完成")
                     self.finished.emit(True)
                 elif not self.is_running:
                     self.log_message.emit("执行被取消")
                     self.finished.emit(False)
                 else:
-                    self.progress_updated.emit(0, "执行失败")
+                    # 失败时保留当前进度，不回跳到 0（避免误导为“什么都没跑”）
                     self.finished.emit(False)
 
             finally:
@@ -350,20 +350,16 @@ class PipelineWorker(QThread):
             # 加载配置
             config = Config.load(config_path)
 
-            # 计算总用例数
-            total_cases = len(config.cases)
-            completed_cases = 0
-
-            # 执行每个步骤
+            # 执行每个步骤；进度按阶段上报，由 GUI 按权重汇总
+            stage_labels = {"generate": "生成工程", "build": "构建", "test": "测试"}
             for step in steps:
                 if not self.is_running:
                     return False
 
-                self.log_message.emit(f"执行步骤: {step.value}")
-                self.progress_updated.emit(
-                    int(completed_cases / total_cases * 100) if total_cases > 0 else 0,
-                    f"正在执行: {step.value}"
-                )
+                stage = step.value
+                label = stage_labels.get(stage, stage)
+                self.log_message.emit(f"执行步骤: {stage}")
+                self.stage_progress.emit(stage, 0, f"正在{label}...")
 
                 if step == Step.GENERATE:
                     if not self._execute_generate(config):
@@ -372,10 +368,15 @@ class PipelineWorker(QThread):
                     if not self._execute_build(config):
                         return False
                 elif step == Step.TEST:
-                    test_ok, success_count = self._execute_test(config)
-                    completed_cases += success_count
+                    test_ok, _success_count = self._execute_test(config)
                     if not test_ok:
                         return False
+                else:
+                    continue
+
+                # 测试阶段自己按用例上报百分比（停止时不会到 100），这里只收尾前两个阶段
+                if step != Step.TEST:
+                    self.stage_progress.emit(stage, 100, f"{label}完成")
 
             return True
 
@@ -459,7 +460,8 @@ class PipelineWorker(QThread):
                 self.log_message.emit(f"  构建: {name}...")
                 if self._build_total > 0:
                     progress = int(self._build_completed / self._build_total * 100)
-                    self.progress_updated.emit(
+                    self.stage_progress.emit(
+                        "build",
                         progress,
                         f"构建进度: {self._build_completed}/{self._build_total} ({progress}%)"
                     )
@@ -472,7 +474,8 @@ class PipelineWorker(QThread):
                 self.log_message.emit(f"  {status_icon} {name} ({duration_s:.1f}s)")
                 if self._build_total > 0:
                     progress = int(self._build_completed / self._build_total * 100)
-                    self.progress_updated.emit(
+                    self.stage_progress.emit(
+                        "build",
                         progress,
                         f"构建进度: {self._build_completed}/{self._build_total} ({progress}%)"
                     )
@@ -493,7 +496,7 @@ class PipelineWorker(QThread):
                     f"构建失败：工作区 {workspace} 中没有任何有效工程（未找到含 .project 的子目录），"
                     f"已中止，避免后续误测旧工程"
                 )
-                self.progress_updated.emit(0, "构建未执行：工作区中没有工程")
+                self.stage_progress.emit("build", 0, "构建未执行：工作区中没有工程")
                 return False
 
             results = builder.build_all()
@@ -574,8 +577,11 @@ class PipelineWorker(QThread):
                         message = f"正在停止… 已跳过 {self._test_skipped_count}/{self._test_total_cases}"
                     else:
                         message = f"测试进度: {executed}/{self._test_total_cases} ({progress}%)"
-                    self.progress_updated.emit(progress, message)
+                    self.stage_progress.emit("test", progress, message)
                 self._handle_case_finished(name, gui_status, duration)
+
+            def on_batch_started(current, total):
+                self.test_batch_started.emit(current, total)
             
             def on_hardware_error(batch_number, error_message):
                 # 触发硬件错误信号
@@ -587,6 +593,7 @@ class PipelineWorker(QThread):
 
             executor.on_case_started = on_case_started
             executor.on_case_finished = on_case_finished
+            executor.on_batch_started = on_batch_started
             executor.on_hardware_error = on_hardware_error
             executor.on_retry = on_retry
 
@@ -603,7 +610,7 @@ class PipelineWorker(QThread):
                     self._emit_error(
                         f"测试中止：工作区 {workspace} 中没有找到任何 .out 文件，请先构建或检查工作区目录"
                     )
-                self.progress_updated.emit(0, "测试未执行：未找到 .out")
+                self.stage_progress.emit("test", 0, "测试未执行：未找到 .out")
                 return False, 0
 
             import json
@@ -653,7 +660,7 @@ class PipelineWorker(QThread):
             )
             self.final_summary = summary
             if total > 0:
-                self.progress_updated.emit(percent, summary)
+                self.stage_progress.emit("test", percent, summary)
 
             if stopped:
                 self.log_message.emit(f"测试已停止: 成功 {success} / 失败 {failed} / 跳过 {skipped}")

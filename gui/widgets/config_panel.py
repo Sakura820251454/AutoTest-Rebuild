@@ -20,16 +20,18 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton,
     QGroupBox, QScrollArea, QFrame, QMessageBox, QTableWidget, QTableWidgetItem,
-    QCheckBox
+    QCheckBox, QHeaderView
 )
 from .no_scroll_spinbox import NoScrollSpinBox as QSpinBox, NoScrollComboBox as QComboBox
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QEvent, pyqtSignal
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import Config, ExportPoint, DEFAULT_EXPORT_POINTS
 from src.runtime_paths import app_path
 from .path_selector import PathSelector
+from .collapsible_group import CollapsibleGroupBox
+from ..utils.validators import Validators
 
 # 内存导出格式ID映射表 (CCS 12.1.0)
 EXPORT_FORMAT_MAP = {
@@ -321,9 +323,9 @@ class ConfigPanel(QWidget):
         
         content_layout.addWidget(test_group)
         
-        # ===== 内存段配置组 =====
-        memory_group = QGroupBox("内存导出配置")
-        memory_layout = QVBoxLayout(memory_group)
+        # ===== 内存段配置组（高级配置，默认折叠以缩短页面）=====
+        memory_group = CollapsibleGroupBox("内存导出配置", expanded=False)
+        memory_layout = memory_group.content_layout
         memory_layout.setSpacing(10)
 
         # Flash 项目选项
@@ -379,9 +381,22 @@ class ConfigPanel(QWidget):
         self.memory_table.setColumnWidth(2, 100)
         self.memory_table.setColumnWidth(3, 200)
         self.memory_table.setColumnWidth(4, 60)
+        # 最后一列拉伸吃掉右侧空白
+        self.memory_table.horizontalHeader().setStretchLastSection(True)
         self.memory_table.setMinimumHeight(300)
         self.memory_table.itemChanged.connect(self.on_config_modified)
         memory_layout.addWidget(self.memory_table)
+
+        # 空表占位提示（悬浮在表格视口中央）
+        self.memory_empty_label = QLabel("暂无内存段，点击“添加内存段”新增",
+                                         self.memory_table.viewport())
+        self.memory_empty_label.setAlignment(Qt.AlignCenter)
+        self.memory_empty_label.setStyleSheet("color: #888888;")
+        self.memory_empty_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.memory_table.viewport().installEventFilter(self)
+        self.memory_table.model().rowsInserted.connect(self._update_memory_empty_hint)
+        self.memory_table.model().rowsRemoved.connect(self._update_memory_empty_hint)
+        self._update_memory_empty_hint()
         
         # 按钮布局
         memory_button_layout = QHBoxLayout()
@@ -424,9 +439,9 @@ class ConfigPanel(QWidget):
 
         content_layout.addWidget(memory_group)
 
-        # ===== 导出时间点配置组 =====
-        export_group = QGroupBox("导出时间点配置")
-        export_layout = QVBoxLayout(export_group)
+        # ===== 导出时间点配置组（高级配置，默认折叠）=====
+        export_group = CollapsibleGroupBox("导出时间点配置", expanded=False)
+        export_layout = export_group.content_layout
         export_layout.setSpacing(10)
 
         # 导出时间点选择
@@ -666,7 +681,6 @@ class ConfigPanel(QWidget):
         for segment in config.memory_segments:
             row = self.memory_table.rowCount()
             self.memory_table.insertRow(row)
-
             # 名称
             name_item = QTableWidgetItem(segment.name)
             name_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
@@ -694,6 +708,8 @@ class ConfigPanel(QWidget):
             page_item = QTableWidgetItem(str(segment.page))
             page_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.memory_table.setItem(row, 4, page_item)
+
+        self._update_memory_empty_hint()
 
         # 加载导出时间点配置
         export_points = config.export_points if config.export_points else DEFAULT_EXPORT_POINTS
@@ -820,18 +836,44 @@ class ConfigPanel(QWidget):
             是否验证通过
         """
         config_dict = self.get_config_dict()
-        
-        # 检查必填路径
+
+        # 清除上一次的标红
+        for selector in self.path_selectors.values():
+            selector.clear_error()
+
+        # 检查必填路径：不能为空，且必须真实存在（目录/文件类型要匹配）
         required_paths = [
-            ("generate_dir", "工作区目录"),
-            ("ccs_executable", "CCS 可执行文件"),
-            ("ccs_dss", "DSS 执行器"),
+            ("generate_dir", "工作区目录", False),
+            ("ccs_executable", "CCS 可执行文件", True),
+            ("ccs_dss", "DSS 执行器", True),
         ]
-        
-        for key, name in required_paths:
-            if not config_dict.get(key):
-                QMessageBox.warning(self, "验证失败", f"请填写 {name}")
-                return False
+
+        base_dir = getattr(self.config, "_base_dir", None) or Path.cwd()
+        problems = []
+        for key, name, is_file in required_paths:
+            raw_value = (config_dict.get(key) or "").strip()
+            selector = self.path_selectors[key]
+            if not raw_value:
+                message = f"{name}不能为空"
+                selector.set_error(message)
+                problems.append(f"- {name}：不能为空")
+                continue
+
+            # 相对路径按配置文件所在目录解析（与 Config 的解析规则保持一致）
+            path = Path(raw_value).expanduser()
+            if not path.is_absolute():
+                path = (base_dir / path)
+            valid, error = Validators.validate_path(
+                str(path), must_exist=True, is_file=is_file)
+            if not valid:
+                selector.set_error(error)
+                problems.append(f"- {name}：{error}")
+
+        if problems:
+            QMessageBox.warning(
+                self, "验证失败",
+                "以下必填路径不可用，已用红框标出：\n\n" + "\n".join(problems))
+            return False
         
         # 验证内存段配置
         memory_segments = config_dict.get("memory_segments", {}).get("segments", [])
@@ -995,6 +1037,20 @@ class ConfigPanel(QWidget):
             self.memory_table.removeRow(row)
 
         self.config_changed.emit()
+
+    def _update_memory_empty_hint(self, *args):
+        """内存段为空时在表格视口中央显示占位提示"""
+        if self.memory_table.rowCount() == 0:
+            self.memory_empty_label.setGeometry(self.memory_table.viewport().rect())
+            self.memory_empty_label.show()
+        else:
+            self.memory_empty_label.hide()
+
+    def eventFilter(self, obj, event):
+        """表格尺寸变化时同步占位提示的位置"""
+        if obj is self.memory_table.viewport() and event.type() == QEvent.Resize:
+            self._update_memory_empty_hint()
+        return super().eventFilter(obj, event)
 
     def on_restore_default(self):
         """恢复默认配置"""

@@ -19,7 +19,7 @@ from typing import Optional
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QGroupBox, QTextEdit, QMessageBox
+    QPushButton, QGroupBox, QTextEdit, QMessageBox, QToolButton
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 
@@ -61,6 +61,17 @@ def format_missing_tools_message(missing) -> str:
         "建议：请在“配置”页把上述项改为本机实际路径，保存后重新检测"
         "（对应 config.json 的 " + " / ".join(key for _, key, _ in missing) + "）",
     ])
+
+
+def is_key_line(message: str) -> bool:
+    """判断一行检测输出是否为“关键行”（其余归入折叠的 GEL 原始输出）"""
+    text = (message or "").strip()
+    keywords = (
+        "开始检测", "预检测", "CCXML", "设备名称", "CPU 名称",
+        "硬件连接", "检测出错", "检测被取消", "检测完成", "检测超时",
+        "错误", "FAILED", "SUCCESS",
+    )
+    return any(keyword in text for keyword in keywords)
 
 
 class HardwarePanel(QWidget):
@@ -109,11 +120,28 @@ class HardwarePanel(QWidget):
         self.config_info_label.setWordWrap(True)
         detail_layout.addWidget(self.config_info_label)
         
-        # 检测结果文本框
+        # 检测结果文本框（只显示关键行）
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
         self.result_text.setPlaceholderText('点击"开始检测"按钮检测硬件连接状态...')
         detail_layout.addWidget(self.result_text)
+
+        # GEL 原始输出：默认折叠，需要排查时展开
+        self.raw_toggle = QToolButton()
+        self.raw_toggle.setCheckable(True)
+        self.raw_toggle.setChecked(False)
+        self.raw_toggle.setArrowType(Qt.RightArrow)
+        self.raw_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.raw_toggle.setText("显示 GEL 原始输出")
+        self.raw_toggle.setVisible(False)
+        self.raw_toggle.toggled.connect(self._on_raw_toggled)
+        detail_layout.addWidget(self.raw_toggle)
+
+        self.raw_text = QTextEdit()
+        self.raw_text.setReadOnly(True)
+        self.raw_text.setMaximumHeight(180)
+        self.raw_text.setVisible(False)
+        detail_layout.addWidget(self.raw_text)
         
         layout.addWidget(detail_group)
         
@@ -168,6 +196,19 @@ class HardwarePanel(QWidget):
         self.check_btn.setEnabled(self._config_available and not checking)
         self.check_btn.setToolTip("" if self._config_available else self._no_config_reason)
     
+    def _mark_not_connected(self, message: str):
+        """检测无法开始/失败：指示灯统一为“未连接”，并在详情里说明原因"""
+        self.emulator_indicator.set_disconnected()
+        self.target_indicator.set_disconnected()
+        self.result_text.setPlainText(message)
+        self._refresh_check_btn()
+
+    def _on_raw_toggled(self, expanded: bool):
+        """展开/折叠 GEL 原始输出"""
+        self.raw_text.setVisible(expanded)
+        self.raw_toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.raw_toggle.setText("隐藏 GEL 原始输出" if expanded else "显示 GEL 原始输出")
+
     def start_check(self):
         """开始检测"""
         if self.config is None:
@@ -175,6 +216,7 @@ class HardwarePanel(QWidget):
                 "尚未加载配置",
                 action="请先在“配置”页选择目录并保存，或通过“文件 → 打开配置...”加载")
             self.log_entry.emit(message.replace("\n", " | "), "WARNING")
+            self._mark_not_connected(message)
             warning(self, "无法检测硬件", message)
             return
 
@@ -185,6 +227,7 @@ class HardwarePanel(QWidget):
         if missing:
             message = format_missing_tools_message(missing)
             self.log_entry.emit(message.replace("\n", " | "), "ERROR")
+            self._mark_not_connected(message)
             warning(self, "无法检测硬件", message)
             return
         
@@ -193,6 +236,9 @@ class HardwarePanel(QWidget):
         self.target_indicator.set_checking()
         self.check_btn.setEnabled(False)
         self.result_text.clear()
+        self.raw_text.clear()
+        self.raw_toggle.setChecked(False)
+        self.raw_toggle.setVisible(False)
         self.result_text.append("正在检测硬件连接...")
         
         # 创建并启动检测线程
@@ -231,11 +277,14 @@ class HardwarePanel(QWidget):
     
     def on_log_message(self, message: str):
         """
-        日志消息处理
-        
+        日志消息处理：关键行显示在详情区，其余收进折叠的 GEL 原始输出
+
         Args:
             message: 日志消息
         """
-        self.result_text.append(message)
+        self.raw_text.append(message)
+        self.raw_toggle.setVisible(True)
+        if is_key_line(message):
+            self.result_text.append(message)
         level = "ERROR" if ("失败" in message or "错误" in message) else "INFO"
         self.log_entry.emit(message, level)
