@@ -311,10 +311,19 @@ class Config:
         resolved = re.sub(env_var_pattern, replace_env, path_str)
         
         path = Path(resolved)
-        if path.is_absolute():
-            return path.resolve()
-        else:
-            return (self._base_dir / path).resolve()
+        try:
+            if path.is_absolute():
+                return path.resolve()
+            else:
+                return (self._base_dir / path).resolve()
+        except PermissionError:
+            raise ConfigPathError(
+                "路径解析", path_str, f"无法访问（权限拒绝）: {path}"
+            ) from None
+        except OSError as e:
+            raise ConfigPathError(
+                "路径解析", path_str, f"无法解析（{e}）: {path}"
+            ) from None
     
     def _resolve_workspace_dirs(self, container: Dict) -> tuple:
         """
