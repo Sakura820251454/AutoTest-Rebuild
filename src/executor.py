@@ -514,6 +514,22 @@ class TestExecutor:
         logger.info(f"批次结果收集完成，共 {len(results)} 个结果")
         return results
     
+    @staticmethod
+    def _parse_duration_ms(raw: str) -> Optional[int]:
+        """解析 summary.csv 的耗时列（毫秒）
+
+        耗时只是展示字段：解析失败（如 DSS 写出 1.2s、12ms、空串）时返回 None，
+        绝不能连累用例状态判定。
+        """
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            logger.warning(f"耗时字段不是整数，按空值处理: {raw!r}")
+            return None
+
     def _read_case_result(self, case: Dict) -> Optional[TestResult]:
         """
         读取单个用例的结果
@@ -546,7 +562,7 @@ class TestExecutor:
                 if len(parts) >= 2:
                     case_name = parts[0]
                     status = parts[1]
-                    duration_ms = int(parts[2]) if len(parts) >= 3 else None
+                    duration_ms = self._parse_duration_ms(parts[2]) if len(parts) >= 3 else None
                     logger.info(f"用例 {case_name} 结果: {status}")
                     return TestResult(
                         case_name=case_name,
