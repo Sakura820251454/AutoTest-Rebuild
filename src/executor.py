@@ -84,6 +84,12 @@ class TestExecutor:
         self.encrypt_failures: List[str] = []
         # 用例名 -> {"result": success/failed/skip, "text": 表格里显示的文字}
         self.encrypt_status: Dict[str, Dict[str, str]] = {}
+        # 未执行（停止/中断）的用例：不参与失败统计、不参与加密校验
+        self.skipped_case_names: set = set()
+        # 失败原因（供 GUI 摘要直接展示，不用翻日志）
+        self.failure_reasons: List[str] = []
+        # 是否因停止请求而提前结束
+        self.stopped = False
         
         self.template_path = resource_path("templates/dss_test.js.tmpl")
         # 如果提供了时间戳则使用，否则生成新的（用于断点续测时保持时间戳一致）
@@ -187,6 +193,11 @@ class TestExecutor:
                 return []
             
             logger.info(f"共 {len(cases)} 个测试用例")
+
+            # 每次执行重置停止相关状态
+            self.stopped = False
+            self.skipped_case_names = set()
+            self.failure_reasons = []
             
             # 检查是否需要断点续测
             # 注意：如果用户已经指定了 start_batch（>0），则使用用户指定的值
@@ -231,6 +242,7 @@ class TestExecutor:
                     # 检查是否请求停止
                     if self._stop_requested or (self.should_stop and self.should_stop()):
                         logger.info("检测到停止请求，终止测试执行")
+                        self.stopped = True
                         self._mark_remaining_batches_as_skipped(batches[batch_index:])
                         break
 
@@ -279,6 +291,7 @@ class TestExecutor:
                             # 批次成功，处理结果并跳出重试循环
                             for result in batch_results:
                                 all_results.append(result)
+                                self._record_result_reason(result)
                                 # 使用 DSS 脚本记录的耗时，如果没有则用批次时间估算
                                 if result.duration_ms is not None:
                                     duration = result.duration_ms / 1000.0
@@ -325,6 +338,7 @@ class TestExecutor:
                         result_case_names = {r.case_name for r in batch_results}
                         for result in batch_results:
                             all_results.append(result)
+                            self._record_result_reason(result)
                             # 使用 DSS 脚本记录的耗时，如果没有则用批次时间估算
                             if result.duration_ms is not None:
                                 duration = result.duration_ms / 1000.0
@@ -338,14 +352,21 @@ class TestExecutor:
                                     logger.error(f"通知用例完成失败: {result.case_name}, 错误: {e}")
 
                         # 处理没有结果的用例
+                        stopping = self._stop_requested or bool(self.should_stop and self.should_stop())
                         for case in batch:
                             if case["name"] not in result_case_names:
+                                if stopping:
+                                    # 用户停止导致的中断：未执行，不计入失败
+                                    self.stopped = True
+                                    self._mark_case_skipped(case)
+                                    continue
                                 if connection_lost:
                                     logger.error(f"用例未生成结果文件（硬件断开）: {case['name']}")
                                     status = "ConnectionLost"
                                 else:
                                     logger.error(f"用例未生成结果文件，标记为失败: {case['name']}")
                                     status = "Failed"
+                                self.failure_reasons.append(f"{case['name']}: {status}")
                                 duration = batch_end_time - batch_start_time
                                 if self.on_case_finished:
                                     try:
@@ -375,7 +396,19 @@ class TestExecutor:
                         break
 
                     batch_index += 1
-            
+
+            # 停止后兜底：已排期但仍无结果的用例一律标为跳过，不计入失败
+            if self._stop_requested or (self.should_stop and self.should_stop()):
+                self.stopped = True
+                reported = {r.case_name for r in all_results}
+                leftover = [
+                    case for batch in batches for case in batch
+                    if case["name"] not in reported
+                    and case["name"] not in self.skipped_case_names
+                ]
+                for case in leftover:
+                    self._mark_case_skipped(case)
+
             # 收集剩余未执行用例的结果（如果有）
             executed_case_names = {r.case_name for r in all_results}
             for case in cases:
@@ -384,6 +417,7 @@ class TestExecutor:
                     case_result = self._read_case_result(case)
                     if case_result:
                         all_results.append(case_result)
+                        self._record_result_reason(case_result)
             
             # 按用例名称排序结果，保持顺序一致
             case_name_to_result = {r.case_name: r for r in all_results}
@@ -472,7 +506,27 @@ class TestExecutor:
         """
         for batch in batches:
             for case in batch:
-                self._write_case_result(case, "Skipped")
+                self._mark_case_skipped(case)
+
+    def _mark_case_skipped(self, case: Dict):
+        """把未执行的用例标记为跳过：写结果文件、记录、通知 GUI（重复调用只通知一次）"""
+        name = case.get("name", "")
+        if name in self.skipped_case_names:
+            return
+        self._write_case_result(case, "Skipped")
+        self.skipped_case_names.add(name)
+        logger.warning(f"用例未执行，标记为跳过: {name}")
+        if self.on_case_finished:
+            try:
+                self.on_case_finished(name, "Skipped", 0)
+            except Exception as e:
+                logger.error(f"通知用例跳过失败: {name}, 错误: {e}")
+
+    def _record_result_reason(self, result: TestResult):
+        """记录非成功用例的失败原因，供 GUI 结束摘要直接展示"""
+        if result.status in ("Success", "Skipped"):
+            return
+        self.failure_reasons.append(f"{result.case_name}: {result.error or result.status}")
     
     def _collect_batch_results(self, batch: List[Dict]) -> List[TestResult]:
         """
@@ -1208,6 +1262,10 @@ print("检测完成");
         
         for case in cases:
             case_name = case.get("name", "")
+            if case_name in self.skipped_case_names:
+                # 未执行的用例没有产出，不参与加密校验，也不计入失败
+                self.encrypt_status[case_name] = {"result": "skipped", "text": "未执行（已跳过）"}
+                continue
             export_points = case.get("export_points", [{"when": "after_run", "subdir": "memory"}])
             has_flash_seg = any(seg.get("name") == "FLASH" for seg in case.get("segments", []))
             

@@ -23,7 +23,7 @@ class CaseTable(QTableWidget):
         "running": ("运行中", "#FFA500"),  # 橙色
         "success": ("成功", "#00AA00"),  # 绿色
         "failed": ("失败", "#FF0000"),  # 红色
-        "skipped": ("跳过", "#808080"),  # 灰色
+        "skipped": ("已跳过", "#808080"),  # 灰色
         "error": ("错误", "#FF0000"),  # 红色
     }
     
@@ -166,3 +166,7 @@ class CaseTable(QTableWidget):
         """获取失败用例数量"""
         failed_statuses = ["failed", "error"]
         return sum(1 for case in self.cases.values() if case["status"] in failed_statuses)
+
+    def get_skipped_count(self) -> int:
+        """获取已跳过用例数量（未执行，不计入失败）"""
+        return sum(1 for case in self.cases.values() if case["status"] == "skipped")

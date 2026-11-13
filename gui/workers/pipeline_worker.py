@@ -45,6 +45,37 @@ class GUILogHandler(logging.Handler):
             pass
 
 
+def format_execution_summary(stopped, success, failed, skipped, total,
+                             encrypt_failure_count=0, failure_reasons=None):
+    """
+    构造测试结束摘要
+
+    返回 (进度百分比, 摘要文本)。停止与正常完成分开：停止时明确显示"已停止"，
+    并给出 成功/失败/跳过 三个口径（分母为用例总数）；正常跑完且无失败/跳过时
+    文本与原来保持一致。失败原因直接拼进摘要，不用翻日志。
+    """
+    executed = success + failed
+    if stopped:
+        percent = int(executed / total * 100) if total else 0
+        text = f"已停止（完成 {success}/{total}） | 成功: {success} | 失败: {failed} | 跳过: {skipped}"
+    else:
+        percent = 100
+        text = f"测试完成: {success}/{total} 成功"
+        if failed or skipped:
+            text += f" | 失败: {failed} | 跳过: {skipped}"
+
+    if encrypt_failure_count:
+        text += f" | FLASH 加密失败 {encrypt_failure_count} 处"
+
+    if failure_reasons:
+        preview = "；".join(failure_reasons[:3])
+        if len(failure_reasons) > 3:
+            preview += f"；等共 {len(failure_reasons)} 项"
+        text += f"；失败原因: {preview}"
+
+    return percent, text
+
+
 class PipelineWorker(QThread):
     """流水线执行工作线程"""
 
@@ -67,6 +98,14 @@ class PipelineWorker(QThread):
         self.run_timestamp = run_timestamp  # 用于断点续测保持时间戳一致
         self.is_running = True
         self._executor: Optional[TestExecutor] = None  # 测试执行器引用
+        self.stop_requested = False  # 用户是否点了停止
+        self.stopped = False  # 本次执行是否真的因停止而提前结束
+        self.final_summary = ""  # 测试结束摘要（停止/完成）
+        self._test_success_count = 0
+        self._test_failed_count = 0
+        self._test_skipped_count = 0
+        self._test_total_cases = 0
+        self._test_completed_cases = 0
 
     def run(self):
         """执行流水线"""
@@ -468,8 +507,11 @@ class PipelineWorker(QThread):
         """
         # 使用类属性来跟踪进度
         self._test_success_count = 0
+        self._test_failed_count = 0
+        self._test_skipped_count = 0
         self._test_total_cases = 0
         self._test_completed_cases = 0
+        self.final_summary = ""
 
         try:
             self.log_message.emit("开始执行测试...")
@@ -497,20 +539,25 @@ class PipelineWorker(QThread):
                     self._test_success_count += 1
                 elif status == "ConnectionLost":
                     gui_status = "error"
+                    self._test_failed_count += 1
                 elif status == "Skipped":
                     gui_status = "skipped"
+                    self._test_skipped_count += 1
                 else:
                     gui_status = "failed"
+                    self._test_failed_count += 1
                 
                 self._test_completed_cases += 1
                 
-                # 更新进度
+                # 更新进度（跳过的用例不计入已完成进度，避免停止后直接跳到 100%）
                 if self._test_total_cases > 0:
-                    progress = int(self._test_completed_cases / self._test_total_cases * 100)
-                    self.progress_updated.emit(
-                        progress,
-                        f"测试进度: {self._test_completed_cases}/{self._test_total_cases} ({progress}%)"
-                    )
+                    executed = self._test_success_count + self._test_failed_count
+                    progress = int(executed / self._test_total_cases * 100)
+                    if gui_status == "skipped" and self.stop_requested:
+                        message = f"正在停止… 已跳过 {self._test_skipped_count}/{self._test_total_cases}"
+                    else:
+                        message = f"测试进度: {executed}/{self._test_total_cases} ({progress}%)"
+                    self.progress_updated.emit(progress, message)
                 self._handle_case_finished(name, gui_status, duration)
             
             def on_hardware_error(batch_number, error_message):
@@ -562,14 +609,12 @@ class PipelineWorker(QThread):
             )
 
             # 处理测试结果（已经通过回调函数更新了，这里只统计成功数和进度）
-            # 最终进度更新
-            if self._test_total_cases > 0:
-                self.progress_updated.emit(
-                    100,
-                    f"测试完成: {self._test_success_count}/{self._test_total_cases} 成功"
-                )
-
-            self.log_message.emit(f"测试执行完成: {self._test_success_count}/{len(results)} 成功")
+            total = self._test_total_cases
+            success = self._test_success_count
+            failed = self._test_failed_count
+            skipped = self._test_skipped_count
+            stopped = bool(getattr(executor, "stopped", False))
+            self.stopped = stopped
 
             # FLASH 加密失败必须明确告知（不能只留在滚动日志里，也不能当作成功）
             encrypt_failures = getattr(executor, "encrypt_failures", None) or []
@@ -577,10 +622,26 @@ class PipelineWorker(QThread):
                 self.log_message.emit(f"FLASH 段加密失败 {len(encrypt_failures)} 处，相关数据不能直接用于软仿：")
                 for line in encrypt_failures:
                     self.log_message.emit(f"  {line}")
-                self.progress_updated.emit(
-                    100,
-                    f"测试完成，但 FLASH 加密失败 {len(encrypt_failures)} 处"
-                )
+
+            failure_reasons = getattr(executor, "failure_reasons", None) or []
+            if failure_reasons:
+                self.log_message.emit(f"失败原因（{len(failure_reasons)} 项）：")
+                for line in failure_reasons:
+                    self.log_message.emit(f"  {line}")
+
+            percent, summary = format_execution_summary(
+                stopped, success, failed, skipped, total,
+                encrypt_failure_count=len(encrypt_failures),
+                failure_reasons=failure_reasons
+            )
+            self.final_summary = summary
+            if total > 0:
+                self.progress_updated.emit(percent, summary)
+
+            if stopped:
+                self.log_message.emit(f"测试已停止: 成功 {success} / 失败 {failed} / 跳过 {skipped}")
+            else:
+                self.log_message.emit(f"测试执行完成: {success}/{len(results)} 成功")
 
         except Exception as e:
             self.log_message.emit(f"测试执行失败: {str(e)}")
@@ -613,6 +674,7 @@ class PipelineWorker(QThread):
 
     def stop(self):
         """停止执行"""
+        self.stop_requested = True
         self.is_running = False
         if self._executor:
             self._executor.stop()

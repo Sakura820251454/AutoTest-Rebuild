@@ -47,6 +47,8 @@ class ExecutePanel(QWidget):
         self.resume_batch: int = 0  # 0 表示不启用断点续测
         self.hardware_error_occurred: bool = False
         self.failed_batch_number: int = 0
+        self.stopping: bool = False  # 已点击停止、等待工作线程收尾
+        self.stopped: bool = False  # 本次执行因停止而结束
         self.run_timestamp: Optional[str] = None  # 用于保持断点续测结果文件时间戳一致
         
         self._setup_ui()
@@ -336,6 +338,8 @@ class ExecutePanel(QWidget):
         # 重置硬件错误标志
         self.hardware_error_occurred = False
         self.failed_batch_number = 0
+        self.stopping = False
+        self.stopped = False
         
         # 发送开始信号
         self.execution_started.emit()
@@ -361,8 +365,12 @@ class ExecutePanel(QWidget):
     def stop_execution(self):
         """停止执行"""
         if self.worker and self.worker.isRunning():
-            self.worker.stop()
+            # 先给出立即反馈，再调用可能阻塞的 stop()（内部会 terminate DSS 进程）
+            self.stopping = True
             self.stop_btn.setEnabled(False)
+            self.stats_label.setText("正在停止…")
+            self.stats_label.repaint()
+            self.worker.stop()
     
     def on_progress_updated(self, percent: int, message: str):
         """
@@ -434,18 +442,20 @@ class ExecutePanel(QWidget):
             status: 状态
             duration: 耗时(秒)
         """
-        duration_str = f"{duration:.1f}s"
+        duration_str = "--" if status == "skipped" else f"{duration:.1f}s"
         self.case_table.update_case(case_name, status=status, duration=duration_str)
         
-        # 更新统计
-        completed = self.case_table.get_completed_count()
-        total = len(self.case_table.get_all_cases())
-        success = self.case_table.get_success_count()
-        failed = self.case_table.get_failed_count()
-        
-        self.stats_label.setText(
-            f"进度: {completed}/{total} | 成功: {success} | 失败: {failed}"
-        )
+        # 更新统计（停止收尾期间保留"正在停止…"文案，由进度信号驱动）
+        if not self.stopping:
+            completed = self.case_table.get_completed_count()
+            total = len(self.case_table.get_all_cases())
+            success = self.case_table.get_success_count()
+            failed = self.case_table.get_failed_count()
+            skipped = self.case_table.get_skipped_count()
+            
+            self.stats_label.setText(
+                f"进度: {completed}/{total} | 成功: {success} | 失败: {failed} | 跳过: {skipped}"
+            )
         
         self.log_message.emit(
             f"用例完成: {case_name} - {status} ({duration_str})"
@@ -519,8 +529,17 @@ class ExecutePanel(QWidget):
         """
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.stopping = False
 
-        if success:
+        worker = self.worker
+        stopped = bool(worker and getattr(worker, "stop_requested", False))
+        self.stopped = stopped
+
+        if stopped:
+            # 停止不是失败：保留工作线程给出的摘要（已停止（完成 x/N）| 成功/失败/跳过）
+            summary = getattr(worker, "final_summary", "") or "已停止"
+            self.stats_label.setText(summary)
+        elif success:
             self.progress_bar.setValue(100)
             self.stats_label.setText("执行完成")
             # 执行成功，清除断点续测设置
