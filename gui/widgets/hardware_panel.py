@@ -32,6 +32,37 @@ from ..utils.message_boxes import warning
 from ..workers.hardware_checker import HardwareChecker
 
 
+# 硬件相关工具路径：配置键、界面名称、config.json 字段
+TOOL_PATH_FIELDS = (
+    ("ccxml", "CCXML 文件", "tools.ccxml"),
+    ("ccs_executable", "CCS 可执行文件", "tools.ccs_executable"),
+    ("ccs_dss", "DSS 执行器", "tools.ccs_dss"),
+)
+
+
+def collect_missing_tools(paths) -> list:
+    """收集不存在的工具路径，返回 [(界面名称, 配置字段, 路径), ...]"""
+    missing = []
+    for attr, label, key in TOOL_PATH_FIELDS:
+        value = getattr(paths, attr, None)
+        if value is None or not Path(value).exists():
+            missing.append((label, key, value))
+    return missing
+
+
+def format_missing_tools_message(missing) -> str:
+    """把缺失的工具路径拼成“原因/路径/建议”三段式提示"""
+    count = len(missing)
+    detail = "\n".join(f"- {label}（{key}）：{value}" for label, key, value in missing)
+    return "\n".join([
+        f"原因：硬件检测所需的 {count} 个工具路径不存在",
+        "路径：",
+        detail,
+        "建议：请在“配置”页把上述项改为本机实际路径，保存后重新检测"
+        "（对应 config.json 的 " + " / ".join(key for _, key, _ in missing) + "）",
+    ])
+
+
 class HardwarePanel(QWidget):
     """硬件检测面板"""
     
@@ -149,19 +180,10 @@ class HardwarePanel(QWidget):
 
         self.log_entry.emit("开始检测硬件连接", "INFO")
         
-        # 检查必要配置
-        if not self.config.paths.ccxml.exists():
-            message = format_error(
-                "CCXML 文件不存在", path=self.config.paths.ccxml,
-                action="请检查“CCXML 文件”配置，或重新选择该文件")
-            self.log_entry.emit(message.replace("\n", " | "), "ERROR")
-            warning(self, "无法检测硬件", message)
-            return
-        
-        if not self.config.paths.ccs_dss.exists():
-            message = format_error(
-                "DSS 执行器不存在", path=self.config.paths.ccs_dss,
-                action="请检查“DSS 执行器”配置，或重新选择 ccs_dss 路径")
+        # 检查工具路径：一次性列出全部缺失项，直接告诉用户改哪几项
+        missing = collect_missing_tools(self.config.paths)
+        if missing:
+            message = format_missing_tools_message(missing)
             self.log_entry.emit(message.replace("\n", " | "), "ERROR")
             warning(self, "无法检测硬件", message)
             return

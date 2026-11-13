@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import unittest
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -25,7 +26,8 @@ from gui.utils.error_messages import describe_exception, format_error  # noqa: E
 from gui.widgets import log_panel as log_panel_module  # noqa: E402
 from gui.widgets.log_panel import LogPanel, format_log_html  # noqa: E402
 from gui.widgets.execute_panel import ExecutePanel  # noqa: E402
-from gui.widgets.hardware_panel import HardwarePanel  # noqa: E402
+from gui.widgets.hardware_panel import (  # noqa: E402
+    HardwarePanel, collect_missing_tools, format_missing_tools_message)
 from gui.widgets.config_panel import ConfigPanel  # noqa: E402
 from gui.widgets.case_table import CaseTable  # noqa: E402
 from gui.workers.pipeline_worker import GUILogHandler, PipelineWorker  # noqa: E402
@@ -280,6 +282,21 @@ class WorkerLogLevelTest(TempTestCase):
         handler.emit(record)
         self.assertEqual(events, [("boom", "ERROR")])
 
+    def test_ansi_polluted_levelname_still_error(self):
+        """彩色 formatter 污染 levelname 时，仍按 levelno 上报 ERROR"""
+        events = []
+
+        class Collector:
+            def emit(self, message, level):
+                events.append(level)
+
+        handler = GUILogHandler(Collector())
+        record = logging.LogRecord(
+            "x", logging.ERROR, __file__, 1, "boom", None, None)
+        record.levelname = "\x1b[31mERROR\x1b[0m"
+        handler.emit(record)
+        self.assertEqual(events, ["ERROR"])
+
     def test_failed_case_is_error_and_success_is_info(self):
         worker = PipelineWorker(make_config(self.tmp), "test")
         events = []
@@ -301,6 +318,39 @@ class WorkerLogLevelTest(TempTestCase):
         self.assertEqual(events[-2][0], "ERROR")
         self.assertIn("用例失败", events[-2][1])
         self.assertEqual(events[-1][0], "WARNING")
+
+
+class MissingToolsMessageTest(TempTestCase):
+    """硬件检测工具路径缺失时，提示要一次列出三项"""
+
+    def test_lists_all_three_tool_fields(self):
+        paths = SimpleNamespace(
+            ccxml=self.tmp / "nope.ccxml",
+            ccs_executable=self.tmp / "nope.exe",
+            ccs_dss=self.tmp / "nope.bat",
+        )
+        missing = collect_missing_tools(paths)
+        self.assertEqual(
+            [key for _, key, _ in missing],
+            ["tools.ccxml", "tools.ccs_executable", "tools.ccs_dss"])
+
+        message = format_missing_tools_message(missing)
+        self.assertIn("原因：硬件检测所需的 3 个工具路径不存在", message)
+        self.assertIn("路径：", message)
+        self.assertIn("CCXML 文件（tools.ccxml）", message)
+        self.assertIn("CCS 可执行文件（tools.ccs_executable）", message)
+        self.assertIn("DSS 执行器（tools.ccs_dss）", message)
+        self.assertIn("建议：请在“配置”页", message)
+
+    def test_existing_paths_are_not_reported(self):
+        existing = self.tmp / "dss.bat"
+        existing.write_text("", encoding="utf-8")
+        paths = SimpleNamespace(
+            ccxml=existing,
+            ccs_executable=existing,
+            ccs_dss=existing,
+        )
+        self.assertEqual(collect_missing_tools(paths), [])
 
 
 if __name__ == "__main__":
