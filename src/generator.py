@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from xml.etree import ElementTree
+from xml.sax.saxutils import escape as xml_escape
 
 from .config import Config
 from .exceptions import (
@@ -321,6 +323,8 @@ class ProjectGenerator:
         - .cproject: C/C++ 工程配置
         - .cdtbuild: CDT 构建配置（包含 artifactName, OUTPUT_FILE, MAP_FILE 等）
         - .cdtproject: CDT 工程配置
+
+        工程名按 XML 规则转义后写入（& < > " 等），写完后校验 .project 可被解析。
         """
         # 需要检查和替换的文件列表
         config_files = [
@@ -332,28 +336,31 @@ class ProjectGenerator:
 
         # 替换模式：支持各种工程名引用格式
         escaped_name = re.escape(self.template_name)
+        # 工程名来自源文件名，可能含 & < > "（Windows 文件名允许 &），插入 XML 前必须转义。
+        # 只转义新插入的名字，模板原文（可能已含 &amp; 等实体）保持原样，避免二次转义。
+        xml_name = xml_escape(new_name, {'"': "&quot;"})
         patterns = [
             # XML 标签中的工程名
             (re.compile(rf'<name>{escaped_name}</name>'),
-             f'<name>{new_name}</name>'),
+             f'<name>{xml_name}</name>'),
             (re.compile(rf'<project>{escaped_name}</project>'),
-             f'<project>{new_name}</project>'),
+             f'<project>{xml_name}</project>'),
             # 属性中的工程名
             (re.compile(rf'projectName">{escaped_name}</'),
-             f'projectName">{new_name}</'),
+             f'projectName">{xml_name}</'),
             (re.compile(rf'projectName={escaped_name}'),
-             f'projectName={new_name}'),
+             f'projectName={xml_name}'),
             # artifactName 属性（.cdtbuild 中）
             (re.compile(rf'artifactName="{escaped_name}"'),
-             f'artifactName="{new_name}"'),
+             f'artifactName="{xml_name}"'),
             # 输出文件名（.cdtbuild 中）
             (re.compile(rf'"{escaped_name}\.out"'),
-             f'"{new_name}.out"'),
+             f'"{xml_name}.out"'),
             (re.compile(rf'"{escaped_name}\.map"'),
-             f'"{new_name}.map"'),
+             f'"{xml_name}.map"'),
             # project id 中的工程名前缀（.cdtbuild 中）
             (re.compile(rf'{escaped_name}\.com\.ti'),
-             f'{new_name}.com.ti'),
+             f'{xml_name}.com.ti'),
         ]
 
         for file_name in config_files:
@@ -373,3 +380,15 @@ class ProjectGenerator:
                     logger.debug(f"    已更新: {file_name}")
             except Exception as e:
                 logger.warning(f"    替换 {file_name} 失败: {e}")
+
+        # 生成后校验 .project 仍是合法 XML，避免"看起来成功"但 CCS 无法导入
+        project_file = project_dir / ".project"
+        if project_file.exists():
+            try:
+                ElementTree.parse(str(project_file))
+            except ElementTree.ParseError as e:
+                raise GeneratorError(
+                    f"生成的工程文件不是合法 XML: {project_file}",
+                    error_code=2006,
+                    details={"file": str(project_file), "reason": str(e)}
+                )
