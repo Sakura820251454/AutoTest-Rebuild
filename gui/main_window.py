@@ -745,6 +745,7 @@ class MainWindow(QMainWindow):
     
     def on_execution_started(self):
         """执行开始处理"""
+        self._clear_execute_tab_mark()
         self.set_status("执行中...")
         self.ready_label.setText("执行中")
     
@@ -758,15 +759,25 @@ class MainWindow(QMainWindow):
         else:
             self.log_panel.append_log("执行失败", "ERROR")
 
-        if success:
-            self.set_status("执行完成")
+        # 先重新检测阶段（会写状态栏），再写结束提示，避免提示被“阶段: xxx”覆盖
+        self.on_detect_stage()
+
+        detail = self.execute_panel.stats_label.text().strip()
+        if stopped:
+            message = detail if detail.startswith("已停止") else "执行已停止"
+            self.ready_label.setText("已停止")
+        elif success:
+            message = "执行完成"
             self.ready_label.setText("完成")
         else:
-            self.set_status("执行失败")
+            message = "执行失败"
             self.ready_label.setText("失败")
-        
-        # 重新检测阶段
-        self.on_detect_stage()
+        self.set_status(message)
+
+        # 用户不在执行页：页签标记 + 任务栏闪烁，避免错过结束提示
+        if self.tab_widget.currentWidget() is not self.execute_panel:
+            self._mark_execute_tab_result(success, stopped)
+            QApplication.alert(self, 0)
     
     def on_log_message(self, message: str):
         """日志消息处理（INFO）"""
@@ -829,7 +840,25 @@ class MainWindow(QMainWindow):
     def on_tab_changed(self, index: int):
         """切到执行页时后台预扫描工作区，提前显示用例与就绪状态"""
         if self.tab_widget.widget(index) is self.execute_panel:
+            self._clear_execute_tab_mark()
             self.execute_panel.start_case_scan()
+
+    def _mark_execute_tab_result(self, success: bool, stopped: bool):
+        """用户不在执行页时，在页签上标记本次执行结束（切回后清除）"""
+        idx = self.tab_widget.indexOf(self.execute_panel)
+        if idx < 0:
+            return
+        mark = "■" if stopped else ("✓" if success else "✗")
+        self.tab_widget.setTabText(idx, f"执行 {mark}")
+        self.tab_widget.setTabToolTip(idx, "执行已结束，点击查看本次结果")
+
+    def _clear_execute_tab_mark(self):
+        """恢复执行页签标题"""
+        idx = self.tab_widget.indexOf(self.execute_panel)
+        if idx < 0:
+            return
+        self.tab_widget.setTabText(idx, "执行")
+        self.tab_widget.setTabToolTip(idx, "")
 
     def closeEvent(self, event):
         """关闭事件处理"""

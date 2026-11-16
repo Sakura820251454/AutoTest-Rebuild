@@ -9,6 +9,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -84,6 +85,38 @@ class ScanPanelTest(unittest.TestCase):
         self.panel.on_scan_finished([("case_a", "ready", "")])
 
         self.assertEqual(self.panel.case_table.get_all_cases(), ["running_case"])
+
+    def test_scan_after_execution_keeps_results(self):
+        """执行结束后切页预扫描：不得把成功/失败覆盖成“就绪”"""
+        self.panel.case_table.add_case("case_a", "success", "1.2s")
+        self.panel._table_source = "run"
+        self.panel.stats_label.setText("执行完成")
+
+        self.panel.on_scan_finished([("case_a", "ready", "")])
+
+        self.assertEqual(self.panel.case_table.get_case_status("case_a"), "success")
+        self.assertEqual(self.panel.stats_label.text(), "执行完成")
+
+    def test_start_case_scan_skipped_when_results_present(self):
+        """已有本次执行结果时，切页不应再启动预扫描线程"""
+        config = mock.Mock()
+        config.paths.generate_dir = Path(tempfile.gettempdir())
+        self.panel.config = config
+        self.panel._config_available = True
+        self.panel._table_source = "run"
+
+        self.panel.start_case_scan()
+
+        self.assertIsNone(self.panel._scan_worker)
+        self.assertNotEqual(self.panel.stats_label.text(), "正在扫描用例…")
+
+    def test_set_config_resets_table_source(self):
+        """换配置后旧执行结果不再适用，应重新允许预扫描填充"""
+        self.panel._table_source = "run"
+
+        self.panel.set_config(mock.Mock(cases=[]))
+
+        self.assertEqual(self.panel._table_source, "empty")
 
 
 if __name__ == "__main__":

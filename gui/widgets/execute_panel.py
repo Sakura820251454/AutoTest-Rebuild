@@ -90,6 +90,9 @@ class ExecutePanel(QWidget):
         self._scan_worker: Optional[CaseScanWorker] = None  # 用例预扫描线程
         self._config_available: bool = False
         self._no_config_reason: str = "尚未加载配置"
+        # 用例表数据来源：empty=尚未填充，scan=切页预扫描，run=本次执行结果
+        # 执行结果优先级最高：之后切页预扫描不得再用“就绪”覆盖
+        self._table_source: str = "empty"
         
         # 断点续测相关
         self.resume_batch: int = 0  # 0 表示不启用断点续测
@@ -316,6 +319,7 @@ class ExecutePanel(QWidget):
         """
         self.config = config
         self._config_available = True
+        self._table_source = "empty"  # 换配置后旧执行结果不再适用
         self._refresh_start_btn()
         
         # 加载用例列表
@@ -336,6 +340,8 @@ class ExecutePanel(QWidget):
             return
         if self.worker and self.worker.isRunning():
             return
+        if self._table_source == "run":
+            return  # 已有本次执行结果，切页刷新不能覆盖成功/失败状态
         if self._scan_worker and self._scan_worker.isRunning():
             return
 
@@ -352,7 +358,10 @@ class ExecutePanel(QWidget):
         """预扫描完成：填充用例表并标注“就绪/缺 .out”"""
         if self.worker and self.worker.isRunning():
             return  # 已在执行，不要覆盖运行中的状态表
+        if self._table_source == "run":
+            return  # 扫描在启动执行前发出、执行后才返回：保留真实执行结果
 
+        self._table_source = "scan"
         self.case_table.clear_cases()
         ready = 0
         missing = 0
@@ -565,6 +574,9 @@ class ExecutePanel(QWidget):
             self.case_table.clear_cases()
             for case in self.config.cases:
                 self.case_table.add_case(case.name, "pending")
+
+        # 执行期间及结束后，用例表以本次执行结果为准
+        self._table_source = "run"
         
         self._reset_progress(start_stage)
         self.start_btn.setEnabled(False)
