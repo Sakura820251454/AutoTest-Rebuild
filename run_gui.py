@@ -213,6 +213,30 @@ def _apply_app_identity(app):
         app.setWindowIcon(QIcon(str(icon_path)))
 
 
+def _hide_internal_dirs(root: Path) -> None:
+    """
+    把程序目录下的模板/源码/结果输出/runtime 打上 Hidden 属性
+
+    zip / rar / 邮件附件 不保留 NTFS 属性，用户解压后这些目录会普通可见；
+    启动时重打一次属性，保证不管用什么方式分发，程序跑过之后都能回到隐藏状态。
+    失败静默处理（不影响功能）。
+    """
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        HIDDEN = 0x2
+        for name in ("1_project_templete", "2_source_file", "4_result_out", "runtime"):
+            p = root / name
+            if not p.is_dir():
+                continue
+            attrs = k32.GetFileAttributesW(str(p))
+            if attrs == 0xFFFFFFFF:  # INVALID_FILE_ATTRIBUTES
+                continue
+            k32.SetFileAttributesW(str(p), attrs | HIDDEN)
+    except Exception:
+        pass
+
+
 def check_dependencies():
     """检查依赖是否安装"""
     try:
@@ -246,6 +270,9 @@ def _run(args):
         config_path = str(Path(config_path).expanduser().resolve())
 
     os.chdir(app_root())
+
+    # zip / rar 等分发方式不保留 NTFS Hidden 属性，启动时把内部目录重新打隐藏
+    _hide_internal_dirs(app_root())
 
     # 必须在导入 PyQt5 / 创建 QApplication 之前完成，否则 Qt 已经按外部环境找过插件了
     qt_plugins = _prepare_qt_environment()
