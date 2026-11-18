@@ -145,6 +145,10 @@ class ConfigPanel(QWidget):
             selector.path_changed.connect(self.on_config_modified)
             self.path_selectors[hidden_key] = selector
 
+        gel_selector = PathSelector("file", "GEL 文件 (*.gel);;所有文件 (*.*)")
+        gel_selector.path_changed.connect(self.on_config_modified)
+        self.path_selectors["gel_file"] = gel_selector
+
         # 路径配置项（仅展示日常需要的字段）
         path_configs = [
             ("generate_dir", "工作区目录:", "dir"),
@@ -640,6 +644,8 @@ class ConfigPanel(QWidget):
         self.path_selectors["ccs_executable"].set_path(str(config.paths.ccs_executable))
         self.path_selectors["ccs_dss"].set_path(str(config.paths.ccs_dss))
         self.path_selectors["ccxml"].set_path(str(config.paths.ccxml))
+        self.path_selectors["gel_file"].set_path(
+            str(config.paths.gel_file) if config.paths.gel_file else "")
         self.results_dir_selector.set_path(str(config.paths.results_dir))
         
         # 加载构建设置
@@ -748,6 +754,7 @@ class ConfigPanel(QWidget):
             "ccs_executable": self.path_selectors["ccs_executable"].get_path(),
             "ccs_dss": self.path_selectors["ccs_dss"].get_path(),
             "ccxml": self.path_selectors["ccxml"].get_path(),
+            "gel_file": self.path_selectors["gel_file"].get_path(),
             
             # 构建设置
             "build_config": self.build_config_combo.currentText(),

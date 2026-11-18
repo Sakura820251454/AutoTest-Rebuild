@@ -29,6 +29,11 @@ from .exceptions import (
 )
 from .logger import get_logger, LogContext
 from .runtime_paths import app_path, resource_path, to_posix, path_key
+from .gel_config import (
+    prepare_session_ccxml,
+    cleanup_session_ccxml,
+    describe_effective_gel,
+)
 from .flash_encrypt import encrypt_flash_dat_file
 from .hardware_detector import quick_hardware_check
 from . import test_config_generator
@@ -68,6 +73,7 @@ class TestExecutor:
         self.config = config
         self.dss_exe = config.paths.ccs_dss
         self.ccxml = config.paths.ccxml
+        self.gel_file = getattr(config.paths, "gel_file", None)
         self.device = config.test.device
         self.cpu = config.test.cpu
         self.timeout = config.test.test_timeout
@@ -675,9 +681,14 @@ class TestExecutor:
         
         # 步骤2: DSS 连接检测（验证实际可连接性）
         # 只有在预检测通过后才执行，此时硬件大概率存在，DSS 检测会很快
+        session_ccxml = None
         try:
+            # 与测试执行共用同一套 GEL 处理：配置了 gel_file 就用临时 ccxml
+            session_ccxml = prepare_session_ccxml(self.ccxml, self.gel_file)
+            logger.info(describe_effective_gel(self.ccxml, self.gel_file, self.dss_exe))
+
             # 创建临时连接检测脚本
-            check_script = self._create_connection_check_script()
+            check_script = self._create_connection_check_script(session_ccxml or self.ccxml)
             
             with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False, encoding="utf-8") as f:
                 f.write(check_script)
@@ -733,15 +744,20 @@ class TestExecutor:
             import traceback
             logger.warning(f"检测异常详情: {traceback.format_exc()}")
             return False
+        finally:
+            cleanup_session_ccxml(session_ccxml)
     
-    def _create_connection_check_script(self) -> str:
+    def _create_connection_check_script(self, ccxml_path: Optional[Path] = None) -> str:
         """
         创建硬件连接检测脚本
         
+        Args:
+            ccxml_path: 本次会话实际使用的 ccxml（GEL 注入时为临时副本）
+            
         Returns:
             JavaScript 脚本内容
         """
-        ccxml_path = to_posix(self.ccxml)
+        ccxml_path = to_posix(ccxml_path or self.ccxml)
         device_name = self.device
         cpu_name = self.cpu
         return f'''
@@ -817,6 +833,19 @@ print("检测完成");
 '''
 
     def _run_batch(self, batch: List[Dict], global_config: Dict, log_dir: Path, log_file, console_log_pos: int = 0) -> bool:
+        """执行一批用例（按 gel_file 决定本次会话使用的 ccxml）"""
+        session_ccxml = prepare_session_ccxml(self.ccxml, self.gel_file)
+        try:
+            logger.info(describe_effective_gel(self.ccxml, self.gel_file, self.dss_exe))
+            return self._run_batch_with_ccxml(
+                batch, global_config, log_dir, log_file,
+                console_log_pos, session_ccxml or self.ccxml
+            )
+        finally:
+            cleanup_session_ccxml(session_ccxml)
+
+    def _run_batch_with_ccxml(self, batch: List[Dict], global_config: Dict, log_dir: Path, log_file,
+                              console_log_pos: int, ccxml_path: Path) -> bool:
         """
         执行一批测试用例
         
@@ -825,6 +854,8 @@ print("检测完成");
             global_config: 全局配置
             log_dir: 日志目录
             log_file: 日志文件
+            console_log_pos: 控制台日志起始位置
+            ccxml_path: 本次会话实际使用的 ccxml（GEL 注入时为临时副本）
             
         Returns:
             是否成功执行该批次
@@ -833,7 +864,7 @@ print("检测完成");
 
         config_json = {
             "global": {
-                "ccxml": to_posix(global_config["ccxml"]),
+                "ccxml": to_posix(ccxml_path),
                 "device": global_config["device"],
                 "cpu": global_config["cpu"]
             },

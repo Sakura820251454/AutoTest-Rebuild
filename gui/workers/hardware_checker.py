@@ -18,6 +18,11 @@ from PyQt5.QtCore import QThread, pyqtSignal
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import Config
+from src.gel_config import (
+    prepare_session_ccxml,
+    cleanup_session_ccxml,
+    describe_effective_gel,
+)
 from src.hardware_detector import quick_hardware_check
 from src.runtime_paths import to_posix
 
@@ -36,6 +41,7 @@ class HardwareChecker(QThread):
     
     def run(self):
         """执行硬件检测"""
+        session_ccxml = None
         try:
             self.log_message.emit("开始检测硬件连接...")
             
@@ -52,11 +58,23 @@ class HardwareChecker(QThread):
             
             # 步骤2: DSS 连接检测（验证实际可连接性）
             self.log_message.emit("执行 DSS 连接检测...")
-            
+
+            # 与测试执行共用同一套 GEL 处理：配置了 gel_file 就用临时 ccxml
+            session_ccxml = prepare_session_ccxml(
+                self.config.paths.ccxml,
+                getattr(self.config.paths, "gel_file", None),
+            )
+            self.log_message.emit(describe_effective_gel(
+                self.config.paths.ccxml,
+                getattr(self.config.paths, "gel_file", None),
+                self.config.paths.ccs_dss,
+            ))
+            effective_ccxml = session_ccxml or self.config.paths.ccxml
+
             # 创建临时 DSS 脚本
-            dss_script = self._create_dss_script()
+            dss_script = self._create_dss_script(effective_ccxml)
             
-            self.log_message.emit(f"CCXML 文件: {self.config.paths.ccxml}")
+            self.log_message.emit(f"CCXML 文件: {effective_ccxml}")
             self.log_message.emit(f"设备名称: {self.config.test.device}")
             self.log_message.emit(f"CPU 名称: {self.config.test.cpu}")
             
@@ -82,15 +100,20 @@ class HardwareChecker(QThread):
         except Exception as e:
             self.log_message.emit(f"检测出错: {str(e)}")
             self.check_completed.emit(False, f"检测出错: {str(e)}")
+        finally:
+            cleanup_session_ccxml(session_ccxml)
     
-    def _create_dss_script(self) -> str:
+    def _create_dss_script(self, ccxml_path: Optional[Path] = None) -> str:
         """
         创建临时 DSS 脚本
+        
+        Args:
+            ccxml_path: 本次会话实际使用的 ccxml（GEL 注入时为临时副本）
         
         Returns:
             脚本文件路径
         """
-        ccxml_path = to_posix(self.config.paths.ccxml)
+        ccxml_path = to_posix(ccxml_path or self.config.paths.ccxml)
         device_name = self.config.test.device
         cpu_name = self.config.test.cpu
         

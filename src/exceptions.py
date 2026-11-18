@@ -249,6 +249,24 @@ class MemoryExportError(TestError):
         )
 
 
+class GelConfigError(TestError):
+    """GEL 配置错误：文件不存在或 ccxml 中找不到可注入的节点"""
+
+    def __init__(self, reason: str, path: str, suggestion: str):
+        self.suggestion = suggestion
+        super().__init__(
+            reason,
+            error_code=4008,
+            details={"path": path}
+        )
+
+    def _format_message(self) -> str:
+        """原因 / 路径 / 建议三段式，日志与弹窗直接可读"""
+        return (f"[E{self.error_code:04d}] 原因：{self.message}\n"
+                f"路径：{self.details.get('path', '')}\n"
+                f"建议：{self.suggestion}")
+
+
 class LoggerError(AutoTestError):
     """日志相关错误 (5xxx)"""
     

@@ -81,6 +81,7 @@ class PathConfig:
     ccs_executable: Path
     ccs_dss: Path
     ccxml: Path
+    gel_file: Optional[Path] = None   # 可选：显式指定 GEL；None 表示不介入，用设备默认
     
     def validate(self, generation_mode: str = "template"):
         """验证路径配置
@@ -374,6 +375,7 @@ class Config:
             ccs_executable=self._resolve_path(tools.get("ccs_executable", "")),
             ccs_dss=self._resolve_path(tools.get("ccs_dss", "")),
             ccxml=self._resolve_path(tools.get("ccxml", "")),
+            gel_file=self._resolve_path(tools["gel_file"]) if tools.get("gel_file") else None,
         )
     
     def _parse_paths_legacy(self, raw: Dict) -> PathConfig:
@@ -389,6 +391,7 @@ class Config:
             ccs_executable=self._resolve_path(raw.get("ccs_executable", "")),
             ccs_dss=self._resolve_path(raw.get("ccs_dss", "")),
             ccxml=self._resolve_path(raw.get("ccxml", "")),
+            gel_file=self._resolve_path(raw["gel_file"]) if raw.get("gel_file") else None,
         )
     
     def _parse_build_config_new(self, raw: Dict) -> BuildConfig:
@@ -649,6 +652,7 @@ class Config:
             "ccs_executable": str(self.paths.ccs_executable),
             "ccs_dss": str(self.paths.ccs_dss),
             "ccxml": str(self.paths.ccxml),
+            "gel_file": str(self.paths.gel_file) if self.paths.gel_file else "",
             "build_config": self.build.build_config,
             "build_timeout": self.build.build_timeout,
             "max_build_threads": self.build.max_build_threads,
@@ -753,6 +757,7 @@ class Config:
             "ccs_executable": self._format_save_path(self.paths.ccs_executable),
             "ccs_dss": self._format_save_path(self.paths.ccs_dss),
             "ccxml": self._format_save_path(self.paths.ccxml),
+            "gel_file": self._format_save_path(self.paths.gel_file) if self.paths.gel_file else "",
         })
         
         # 更新 build 分组

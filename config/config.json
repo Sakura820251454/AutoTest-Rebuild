@@ -12,7 +12,8 @@
     "_comment": "工具路径配置",
     "ccs_executable": "C:\\ti\\ccs1210\\ccs\\eclipse\\eclipsec.exe",
     "ccs_dss": "C:\\ti\\ccs1210\\ccs\\ccs_base\\scripting\\bin\\dss.bat",
-    "ccxml": "C:\\Users\\AA\\ti\\CCSTargetConfigurations\\280039.ccxml"
+    "ccxml": "C:\\Users\\AA\\ti\\CCSTargetConfigurations\\280039.ccxml",
+    "gel_file": ""
   },
   "build": {
     "_comment": "构建配置",

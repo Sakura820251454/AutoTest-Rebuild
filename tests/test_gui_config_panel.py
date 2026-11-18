@@ -91,6 +91,18 @@ class ConfigPanelTest(TempTestCase):
         self.assertEqual(data["ccs_workspace"], str(cfg.paths.ccs_workspace))
         self.assertEqual(data["result_dir"], str(cfg.paths.result_dir))
 
+    def test_hidden_gel_file_roundtrips_through_panel(self):
+        cfg = make_config(self.tmp)
+        gel = self.tmp / "gels" / "custom.gel"
+        cfg.paths.gel_file = gel
+
+        self.panel.load_config(cfg)
+        self.assertEqual(self.panel.get_config_dict()["gel_file"], str(gel))
+
+        cfg.paths.gel_file = None
+        self.panel.load_config(cfg)
+        self.assertEqual(self.panel.get_config_dict()["gel_file"], "")
+
     def test_encryption_off_disables_verify_checkbox(self):
         cfg = make_config(self.tmp, test={"encrypt_flash_dat": False,
                                           "flash_encrypt_verify": True})

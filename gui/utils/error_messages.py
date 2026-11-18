@@ -18,6 +18,7 @@ from src.exceptions import (
     ConfigFileNotFoundError,
     ConfigPathError,
     ConfigValidationError,
+    GelConfigError,
 )
 
 
@@ -69,6 +70,8 @@ def _explain(exc):
     if isinstance(exc, ConfigPathError):
         return ("配置中的路径无效",
                 "请检查路径是否存在、是否有访问权限")
+    if isinstance(exc, GelConfigError):
+        return (exc.message, exc.suggestion)
     if isinstance(exc, json.JSONDecodeError):
         return (f"配置文件格式错误（第 {exc.lineno} 行第 {exc.colno} 列）",
                 "请检查 JSON 是否缺少逗号、引号或括号，必要时改用“恢复默认”")

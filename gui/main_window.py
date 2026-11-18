@@ -483,6 +483,9 @@ class MainWindow(QMainWindow):
             self.config.paths.ccs_dss = Path(config_dict["ccs_dss"])
         if config_dict.get("ccxml"):
             self.config.paths.ccxml = Path(config_dict["ccxml"])
+        if "gel_file" in config_dict:
+            gel_value = (config_dict.get("gel_file") or "").strip()
+            self.config.paths.gel_file = Path(gel_value) if gel_value else None
         
         # 更新构建设置
         if config_dict.get("build_config"):

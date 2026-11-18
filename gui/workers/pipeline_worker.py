@@ -241,6 +241,7 @@ class PipelineWorker(QThread):
                 "ccs_executable": str(self.config.paths.ccs_executable),
                 "ccs_dss": str(self.config.paths.ccs_dss),
                 "ccxml": str(self.config.paths.ccxml),
+                "gel_file": str(self.config.paths.gel_file) if self.config.paths.gel_file else "",
             },
 
             # 构建设置
