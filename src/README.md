@@ -16,6 +16,7 @@ AutoTest 核心功能模块，提供配置管理、工程生成、构建、测�
 | `generator.py` | 核心 | 工程生成，支持模板模式和手动模式 |
 | `builder.py` | 核心 | 工程构建，并行多线程构建CCS工程 |
 | `executor.py` | 核心 | 测试执行，DSS脚本调用、结果收集、断点续测 |
+| `gel_config.py` | 辅助 | GEL 会话准备，`gel_file` 非空时注入临时 ccxml，输出实际生效 GEL 与来源 |
 | `pipeline.py` | 核心 | 流水线管理，串联所有步骤、断点续传 |
 | `hardware_detector.py` | 辅助 | 硬件预检测，USB设备检测、快速连接检查 |
 | `test_config_generator.py` | 核心 | 测试配置生成，从配置或工作空间生成full_regr.json |

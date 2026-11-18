@@ -42,6 +42,7 @@ GUI 用例自动设置 `QT_QPA_PLATFORM=offscreen`，不会弹窗、不会阻塞
 | `test_executor_results.py` | `_read_case_result` 成功/失败/异常状态与两列旧格式、耗时缺失、耗时非整数/带单位/空串/负数/超大值时仅丢耗时且状态照常；`_collect_results` 汇总匹配、时间戳目录缺失、summary 缺失/空/不完整；`_find_last_completed_batch` 全完成、首批失败、有目录无 summary、中间批次不完整时的续测起点 |
 | `test_generator.py` | 模板模式按源文件批量生成、模板名读取与回退、工程名/产物名在各配置文件中的替换、工程名含 `& < > "` 时按 XML 转义且生成后可被 `ET.parse` 解析、原有实体不二次转义、模板本身损坏时报失败而不是静默成功、目标已存在时跳过与 `clean=True` 重建、模板/源目录与 `.cproject` 缺失、手动模式工程校验 |
 | `test_report_generator.py` | 未开加密 CSV 两列、开加密三列、`dat_dir` 缺失时回落到结果根目录、空结果不生成文件 |
+| `test_gel_config.py` | `tools.gel_file` 空/有值与相对/绝对往返、空值零介入、`<device><cpu>` 注入内容与临时文件清理、文件缺失与无法注入的中文三段式报错、ccxml 已声明 GEL 的来源描述；离线 DSS `openSession` 查询已登记 GEL 确认 CCS 接受注入结果 |
 | `test_gui_config_panel.py` | 生成模式切换时模板/源文件两行显隐、加密开关与回读校验联动、字段加载/回读往返（结果目录、隐藏兼容字段）、Flash 三态 |
 | `test_gui_execute_panel.py` | 断点续测复选框联动起始批次、从配置结果目录恢复最新时间戳、旧 `5_result_dat` 兼容、无结果返回 None |
 | `test_stop_semantics.py` | 停止后剩余用例标记 `Skipped` 并只通知一次、跳过用例不参与 FLASH 加密且不计失败、停止时 `run_all` 全量跳过且无加密失败；结束摘要区分"已停止/测试完成"、成功/失败/跳过口径、失败原因直显；点击停止立即显示"正在停止…"、停止收尾期间不被覆盖、正常结束仍显示"执行完成" |
@@ -56,8 +57,8 @@ GUI 用例自动设置 `QT_QPA_PLATFORM=offscreen`，不会弹窗、不会阻塞
 
 ## 本次基线
 
-- 用例总数：246，通过 246，失败 0，错误 0，跳过 0
-- 单次全量耗时：约 5.9 秒（Windows，Python 3.9.12 32 位）
+- 用例总数：268，通过 268，失败 0，错误 0，跳过 0（含离线 DSS GEL 验收，依赖本机 CCS 12.10）
+- 单次全量耗时：约 12.8 秒（Windows，Python 3.9.12 32 位）
 
 ## 配置字段守卫
 
