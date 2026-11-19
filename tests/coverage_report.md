@@ -2,7 +2,7 @@
 
 - 采集对象：`tests\run_checks.py`（现有全量用例，未为覆盖率新增任何用例）
 - 采集时间：2026-11-13
-- 被测项目：`d:\AutoTest_rebuild_bak`
+- 被测项目：`d:/AutoTest_rebuild`
 - 解释器：Python 3.9.12（32 bit）
 - 工具：coverage.py 7.10.7，开启分支覆盖（`--branch`）
 - 用例结果：107 例全部通过，耗时 5.82 s，退出码 0

@@ -204,11 +204,11 @@ def resource_path(rel: str) -> Path:
 | 7 | [test_config_generator.py](file:///d:/AutoTest_rebuild/src/test_config_generator.py#L159) | 同上（工作空间自动生成分支） | 同上 |
 | 8 | [test_config_generator.py](file:///d:/AutoTest_rebuild/src/test_config_generator.py#L183) | `out_file.resolve()` | 保持绝对（无需改） |
 | 9 | [report_generator.py](file:///d:/AutoTest_rebuild/src/report_generator.py#L49) | `Path("results") / ts` | `app_path("results") / ts` |
-| 10 | [execute_panel.py](file:///d:/AutoTest_rebuild_bak/gui/widgets/execute_panel.py#L552-L579) | 三处 CWD 相对目录 | `app_path(...)`；时间戳解析**保持现有三元写法**（`parts[1] if parts[0]=="results" else parts[-2]`），相对/绝对两种目录形态都能取对 |
+| 10 | [execute_panel.py](file:///d:/AutoTest_rebuild/gui/widgets/execute_panel.py#L552-L579) | 三处 CWD 相对目录 | `app_path(...)`；时间戳解析**保持现有三元写法**（`parts[1] if parts[0]=="results" else parts[-2]`），相对/绝对两种目录形态都能取对 |
 | 11 | [pipeline_worker.py](file:///d:/AutoTest_rebuild/gui/workers/pipeline_worker.py#L237) | `f"results/{case.name}"` | `str(app_path("results") / case.name)` |
 | 12 | [run_gui.py](file:///d:/AutoTest_rebuild/run_gui.py#L19) | `sys.path.insert` 无条件执行 | 加 `if not is_frozen()`；并在 `main()` 最前 `os.chdir(app_root())` |
 | 13 | [run_gui.py](file:///d:/AutoTest_rebuild/run_gui.py#L28-L39) | `--install-deps` 用 `sys.executable -m pip` | 冻结模式下直接禁用该参数（依赖已随包） |
-| 14 | [config.py](file:///d:/AutoTest_rebuild_bak/src/config.py#L303) | `_base_dir = config_path.parent` | **保持不变**（正确设计）；四份随包配置的 `paths` 已改成相对路径；`config.json` 不进交付包 |
+| 14 | [config.py](file:///d:/AutoTest_rebuild/src/config.py#L303) | `_base_dir = config_path.parent` | **保持不变**（正确设计）；四份随包配置的 `paths` 已改成相对路径；`config.json` 不进交付包 |
 | 15 | [executor.py](file:///d:/AutoTest_rebuild/src/executor.py#L507) / `:750` | `Path(case["dat_dir"]).resolve()` | 第 5/7 项已产出绝对路径，这里保留 `resolve()` 也无害 |
 
 > `run.py`、`scripts/import_and_run.py`、`src/pipeline.py` 的 `__main__` **不在上表**，它们仍是 CLI 使用的入口，源码模式下继续可用，但打包不考虑（详见 3.7）。
@@ -230,7 +230,7 @@ def resource_path(rel: str) -> Path:
 
 ### 3.5 随包配置的写法（四个日常配置 + `config.default.json`）
 
-四个日常配置（`config-28335-flash_new.json`、`config-28335-sram.json`、`config-28335-xintf.json`、`config-fpga-xintf-test.json`）的 `paths` 已改为相对路径（相对配置文件自身，[config.py](file:///d:/AutoTest_rebuild_bak/src/config.py#L303)），解压到任意盘都能用：
+四个日常配置（`config-28335-flash_new.json`、`config-28335-sram.json`、`config-28335-xintf.json`、`config-fpga-xintf-test.json`）的 `paths` 已改为相对路径（相对配置文件自身，[config.py](file:///d:/AutoTest_rebuild/src/config.py#L303)），解压到任意盘都能用：
 
 ```json
 {

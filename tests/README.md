@@ -8,7 +8,7 @@
 
 ## 怎么跑
 
-在项目根目录（`d:\AutoTest_rebuild_bak`）执行：
+在项目根目录执行：
 
 ```powershell
 # 全量回归（推荐，日常只需要这一条）
